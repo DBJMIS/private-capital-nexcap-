@@ -83,6 +83,8 @@ const OPERATIONS_ITEMS: NavItem[] = [
 function isActive(pathname: string, href: string): boolean {
   if (href === '/portfolio') return pathname === '/portfolio';
   if (href === '/dashboard') return pathname === '/dashboard' || pathname === '/';
+  // Exact only: /settings/roles and /settings/users are separate links; prefix match would highlight both Settings + child.
+  if (href === '/settings') return pathname === '/settings';
 
   const prefixHrefs = new Set([
     '/portfolio/funds',
@@ -97,7 +99,6 @@ function isActive(pathname: string, href: string): boolean {
     '/fund-applications',
     '/dd-questionnaires',
     '/assessments',
-    '/settings',
     '/settings/roles',
     '/settings/users',
   ]);
@@ -147,15 +148,34 @@ export function Sidebar({ user, collapsed: _collapsed, onToggleCollapsed: _onTog
     return true;
   });
 
+  const hasPortfolioNav = visiblePortfolioItems.length > 0;
+  const hasPipelineNav = visiblePipelineItems.length > 0;
+  const hasOperationsNav = visibleOperationsItems.length > 0;
+
+  function pickDefaultOpenSection(): OpenSection {
+    if (hasPortfolioNav) return 'portfolio';
+    if (hasPipelineNav) return 'pipeline';
+    if (hasOperationsNav) return 'operations';
+    return null;
+  }
+
   const toggle = (section: Exclude<OpenSection, null>) => {
     setOpenSection((prev) => (prev === section ? null : section));
   };
 
   useEffect(() => {
     const saved = localStorage.getItem('vc_sidebar_open_section');
-    if (saved === 'portfolio' || saved === 'pipeline' || saved === 'operations') {
-      setOpenSection(saved);
+    if (saved === 'portfolio' && hasPortfolioNav) {
+      setOpenSection('portfolio');
+    } else if (saved === 'pipeline' && hasPipelineNav) {
+      setOpenSection('pipeline');
+    } else if (saved === 'operations' && hasOperationsNav) {
+      setOpenSection('operations');
+    } else {
+      const next = pickDefaultOpenSection();
+      if (next) setOpenSection(next);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- restore once on mount using initial visibility
   }, []);
 
   useEffect(() => {
@@ -167,21 +187,29 @@ export function Sidebar({ user, collapsed: _collapsed, onToggleCollapsed: _onTog
   }, [openSection]);
 
   useEffect(() => {
-    if (canSeePortfolio && pathname.startsWith('/portfolio')) {
+    if (hasPortfolioNav && pathname.startsWith('/portfolio')) {
       setOpenSection('portfolio');
+    } else if (hasOperationsNav && pathname.startsWith('/settings')) {
+      setOpenSection('operations');
+    } else if (pathname === '/' || pathname === '/dashboard') {
+      const next = pickDefaultOpenSection();
+      if (next) setOpenSection(next);
     } else if (
-      canSeePipeline &&
-      (pathname.startsWith('/dashboard') ||
-        pathname.startsWith('/cfp') ||
+      hasPipelineNav &&
+      (pathname.startsWith('/cfp') ||
         pathname.startsWith('/fund-applications') ||
         pathname.startsWith('/dd-questionnaires') ||
-        pathname.startsWith('/assessments'))
+        pathname.startsWith('/assessments') ||
+        (pathname.startsWith('/dashboard') && pathname !== '/dashboard'))
     ) {
       setOpenSection('pipeline');
-    } else if (canSeeOperations && pathname.startsWith('/settings')) {
-      setOpenSection('operations');
     }
-  }, [canSeeOperations, canSeePipeline, canSeePortfolio, pathname]);
+  }, [
+    pathname,
+    hasPortfolioNav,
+    hasPipelineNav,
+    hasOperationsNav,
+  ]);
 
   return (
     <aside className="fixed left-0 top-0 z-40 flex h-full w-[240px] flex-col border-r border-[#E5E9F2] bg-[#FFFFFF]">

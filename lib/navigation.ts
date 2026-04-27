@@ -169,6 +169,16 @@ export function breadcrumbsFromPathname(pathname: string): { label: string; href
     return [root, { label: pathname }];
   }
 
+  // Under /settings/..., AUTH_NAV_GROUPS only lists /settings, so .find() would always label the crumb "Settings".
+  if (pathname.startsWith('/settings/')) {
+    const href = pathname.startsWith('/settings/roles')
+      ? '/settings/roles'
+      : pathname.startsWith('/settings/users')
+        ? '/settings/users'
+        : '/settings';
+    return [root, { label: title, href }];
+  }
+
   const segment = AUTH_NAV_GROUPS.flatMap((g) => g.items).find((i) => pathname === i.href || pathname.startsWith(i.href + '/'));
 
   return [root, { label: segment?.label ?? title, href: segment?.href }];
