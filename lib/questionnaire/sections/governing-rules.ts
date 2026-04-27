@@ -1,0 +1,111 @@
+import type { SectionMeta } from '@/lib/questionnaire/types';
+
+export const governingRulesSection: SectionMeta = {
+  key: 'governing_rules',
+  order: 6,
+  title: 'Section VI: Governing Rules / Fund Structure',
+  helper:
+    'Summarise economics, waterfall, tax, fund life, key persons, removal, liquidation, governance bodies, commitments, and leverage.',
+  questions: [
+    {
+      key: 'management_fee',
+      label: 'Management fee (amount, periodicity, payment form)',
+      type: 'textarea',
+      rows: 3,
+      required: true,
+    },
+    { key: 'fund_expenses', label: 'Fund expenses', type: 'textarea', rows: 3, required: true },
+    {
+      key: 'capital_call_mechanics',
+      label: 'Capital call mechanics',
+      type: 'textarea',
+      rows: 4,
+      required: true,
+    },
+    {
+      key: 'distribution_waterfall',
+      label:
+        'Distribution waterfall (capital recovery, gains, interest, hurdle, carry)',
+      type: 'textarea',
+      rows: 6,
+      required: true,
+    },
+    {
+      key: 'tax_liabilities',
+      label: 'Tax liabilities',
+      type: 'textarea',
+      rows: 3,
+      required: true,
+    },
+    {
+      key: 'investment_period_fund_life_extensions',
+      label: 'Investment period, fund life, extensions',
+      type: 'textarea',
+      rows: 4,
+      required: true,
+    },
+    {
+      key: 'key_persons_obligations',
+      label: 'Key persons list and obligations',
+      type: 'textarea',
+      rows: 5,
+      required: true,
+    },
+    {
+      key: 'removal_of_manager',
+      label: 'Removal of manager clauses',
+      type: 'textarea',
+      rows: 4,
+      required: true,
+    },
+    {
+      key: 'liquidation_process',
+      label: 'Liquidation process',
+      type: 'textarea',
+      rows: 4,
+      required: true,
+    },
+    {
+      key: 'early_liquidation_triggers',
+      label: 'Early liquidation triggers',
+      type: 'textarea',
+      rows: 3,
+      required: true,
+    },
+    {
+      key: 'shareholder_meetings_voting',
+      label: 'Shareholder meetings and voting procedures',
+      type: 'textarea',
+      rows: 4,
+      required: true,
+    },
+    {
+      key: 'investment_committee',
+      label: 'Investment Committee — composition, voting, naming',
+      type: 'textarea',
+      rows: 5,
+      required: true,
+    },
+    {
+      key: 'other_committees',
+      label: 'Other committees',
+      type: 'textarea',
+      rows: 3,
+      required: false,
+    },
+    {
+      key: 'commitment_thresholds',
+      label: 'Commitment thresholds (first close, max, per investor)',
+      type: 'textarea',
+      rows: 3,
+      required: true,
+    },
+    {
+      key: 'leverage_policy',
+      label: 'Leverage policy',
+      type: 'textarea',
+      rows: 3,
+      required: true,
+    },
+  ],
+};

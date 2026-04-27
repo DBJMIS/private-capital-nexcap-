@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --navy: #0b1f45;
+    --gold: #c8973a;
+    --teal: #0f8a6e;
+    --shell-bg: #f3f4f6;
+    --shell-card: #ffffff;
+    --shell-border: #e5e7eb;
+  }
+
+  body {
+    @apply bg-shell-bg font-sans text-[#111827] antialiased;
+  }
+}
+
+@layer components {
+  .app-table-wrap {
+    @apply w-full overflow-x-auto;
+  }
+
+  .app-table {
+    @apply w-full border-collapse text-left text-[13px] font-normal text-[#374151];
+  }
+
+  .app-table thead {
+    @apply sticky top-0 z-10 bg-[#f8f9fa];
+  }
+
+  .app-table thead tr {
+    @apply border-b border-[#e5e7eb];
+  }
+
+  .app-table th {
+    @apply px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-[#6b7280];
+  }
+
+  .app-table td {
+    @apply h-12 border-b border-[#f1f3f5] px-4 align-middle;
+  }
+
+  .app-table tbody tr {
+    @apply transition-colors;
+  }
+
+  .app-table tbody tr:hover {
+    @apply cursor-pointer bg-[#F8F9FF] transition-colors;
+  }
+
+  .app-table .tabular-nums,
+  .app-table .font-mono {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .app-card {
+    @apply w-full rounded-lg border border-[#e5e7eb] bg-white;
+  }
+
+  .app-card-header {
+    @apply border-b border-[#e5e7eb] px-4 py-4 text-[13px] font-semibold uppercase tracking-[0.08em] text-[#6b7280];
+  }
+
+  .app-section-label {
+    @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-[#6b7280];
+  }
+
+  .app-metric-value {
+    @apply text-[28px] font-semibold tabular-nums tracking-tight text-navy;
+    font-feature-settings: 'tnum' 1;
+  }
+}

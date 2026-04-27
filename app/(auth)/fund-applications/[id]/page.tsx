@@ -1,0 +1,310 @@
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+
+import { createServerClient } from '@/lib/supabase/server';
+import { getProfile, requireAuth } from '@/lib/auth/session';
+import { can } from '@/lib/auth/permissions';
+import { Button } from '@/components/ui/button';
+import { dsCard, dsType } from '@/components/ui/design-system';
+import { cn } from '@/lib/utils';
+import { CfpInfoStrip } from '@/components/cfp/CfpInfoStrip';
+import { AssignCfpWithRefresh } from '@/components/fund-applications/AssignCfpWithRefresh';
+import type { ActiveCfpOption } from '@/components/fund-applications/AssignCfpMenu';
+import { ApplicationPipelineWorkspace } from '@/components/applications/ApplicationPipelineWorkspace';
+import type { PrequalificationRow } from '@/lib/prequalification/types';
+import type { DdQuestionnaireWorkspace } from '@/lib/applications/dd-questionnaire-workspace';
+import type { AssessmentCriteriaProgressRow, VcAssessmentSummary } from '@/lib/applications/assessment-workspace';
+import type { VcCommitment, VcContract, VcSiteVisit } from '@/types/database';
+
+export const dynamic = 'force-dynamic';
+
+export default async function FundApplicationDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireAuth();
+  const profile = await getProfile();
+  if (!profile || !can(profile, 'write:applications')) {
+    return <p className="text-sm text-red-700">Forbidden</p>;
+  }
+
+  const { id: applicationId } = await params;
+  const supabase = createServerClient();
+  const { data: app } = await supabase
+    .from('vc_fund_applications')
+    .select(
+      'id, fund_name, manager_name, status, submitted_at, created_at, cfp_id, country_of_incorporation, geographic_area, total_capital_commitment_usd, pipeline_metadata',
+    )
+    .eq('id', applicationId)
+    .eq('tenant_id', profile.tenant_id)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (!app) notFound();
+
+  const row = app as {
+    id: string;
+    fund_name: string;
+    manager_name: string;
+    status: string;
+    submitted_at: string | null;
+    created_at: string;
+    cfp_id: string | null;
+    country_of_incorporation: string;
+    geographic_area: string;
+    total_capital_commitment_usd: number;
+    pipeline_metadata: Record<string, unknown> | null;
+  };
+
+  let cfpStrip: { id: string; title: string; status: string; closing_date: string } | null = null;
+  if (row.cfp_id) {
+    const { data: cfpRow } = await supabase
+      .from('vc_cfps')
+      .select('id, title, status, closing_date')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('id', row.cfp_id)
+      .maybeSingle();
+    if (cfpRow) {
+      const c = cfpRow as { id: string; title: string; status: string; closing_date: string };
+      cfpStrip = { id: c.id, title: c.title, status: c.status, closing_date: c.closing_date };
+    }
+  }
+
+  const { data: activeRows } = await supabase
+    .from('vc_cfps')
+    .select('id, title, closing_date')
+    .eq('tenant_id', profile.tenant_id)
+    .eq('status', 'active')
+    .order('closing_date', { ascending: true });
+
+  const activeCfps: ActiveCfpOption[] = (activeRows ?? []).map((r) => ({
+    id: (r as { id: string }).id,
+    title: (r as { title: string }).title,
+    closing_date: (r as { closing_date: string }).closing_date,
+  }));
+
+  const showPreScreeningLink = row.status !== 'draft';
+
+  const { data: prequalification } = await supabase
+    .from('vc_prequalification')
+    .select('*')
+    .eq('tenant_id', profile.tenant_id)
+    .eq('application_id', row.id)
+    .maybeSingle();
+
+  const { data: presentation } = await supabase
+    .from('vc_presentations')
+    .select('id, status, scheduled_date, actual_date')
+    .eq('tenant_id', profile.tenant_id)
+    .eq('application_id', row.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { data: panelEvaluations } = await supabase
+    .from('vc_panel_evaluations')
+    .select('id, status')
+    .eq('tenant_id', profile.tenant_id)
+    .eq('application_id', row.id);
+
+  const panelSubmittedCount = (panelEvaluations ?? []).filter((e) => (e as { status: string }).status === 'submitted').length;
+
+  const { data: panelMembers } = row.cfp_id
+    ? await supabase
+        .from('vc_panel_members')
+        .select('id')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('cfp_id', row.cfp_id)
+        .eq('is_fund_manager', false)
+    : { data: [] as Array<Record<string, unknown>> };
+
+  const { data: questionnaireRaw } = await supabase
+    .from('vc_dd_questionnaires')
+    .select(
+      `
+      id,
+      status,
+      completed_at,
+      vc_dd_sections (
+        id,
+        section_key,
+        status,
+        section_order
+      )
+    `,
+    )
+    .eq('tenant_id', profile.tenant_id)
+    .eq('application_id', row.id)
+    .maybeSingle();
+
+  const questionnaire: DdQuestionnaireWorkspace | null = questionnaireRaw
+    ? (() => {
+        const q = questionnaireRaw as {
+          id: string;
+          status: string | null;
+          completed_at: string | null;
+          vc_dd_sections?: Array<{ id: string; section_key: string; status: string; section_order?: number }>;
+        };
+        const raw = Array.isArray(q.vc_dd_sections) ? q.vc_dd_sections : [];
+        const sections = [...raw]
+          .sort((a, b) => (a.section_order ?? 0) - (b.section_order ?? 0))
+          .map(({ id, section_key, status }) => ({ id, section_key, status }));
+        return {
+          id: q.id,
+          status: q.status,
+          completed_at: q.completed_at,
+          sections,
+        };
+      })()
+    : null;
+
+  const { data: assessmentRaw } = await supabase
+    .from('vc_assessments')
+    .select('id, status, overall_score, passed, recommendation, completed_at')
+    .eq('tenant_id', profile.tenant_id)
+    .eq('application_id', row.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const assessment: VcAssessmentSummary | null = assessmentRaw
+    ? {
+        id: (assessmentRaw as { id: string }).id,
+        status: (assessmentRaw as { status: string | null }).status ?? null,
+        overall_score: (assessmentRaw as { overall_score: number | null }).overall_score ?? null,
+        passed: (assessmentRaw as { passed: boolean | null }).passed ?? null,
+        recommendation: (assessmentRaw as { recommendation: string | null }).recommendation ?? null,
+        completed_at: (assessmentRaw as { completed_at: string | null }).completed_at ?? null,
+      }
+    : null;
+
+  let criteriaProgress: AssessmentCriteriaProgressRow[] = [];
+  if (assessment) {
+    const { data: critRows } = await supabase
+      .from('vc_assessment_criteria')
+      .select('criteria_key, weighted_score')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('assessment_id', assessment.id);
+
+    criteriaProgress = (critRows ?? []).map((c) => ({
+      criteria_key: (c as { criteria_key: string }).criteria_key,
+      weighted_score: (c as { weighted_score: number | null }).weighted_score ?? null,
+    }));
+  }
+
+  const { data: siteVisitRaw } = await supabase
+    .from('vc_site_visits')
+    .select('*')
+    .eq('application_id', row.id)
+    .eq('tenant_id', profile.tenant_id)
+    .maybeSingle();
+
+  const siteVisit = (siteVisitRaw as VcSiteVisit | null) ?? null;
+
+  const { data: contractRaw } = await supabase
+    .from('vc_contracts')
+    .select('*')
+    .eq('application_id', row.id)
+    .eq('tenant_id', profile.tenant_id)
+    .maybeSingle();
+
+  const contract = (contractRaw as VcContract | null) ?? null;
+
+  const { data: commitmentRaw } = await supabase
+    .from('vc_commitments')
+    .select('*')
+    .eq('application_id', row.id)
+    .eq('tenant_id', profile.tenant_id)
+    .maybeSingle();
+
+  const commitment = (commitmentRaw as VcCommitment | null) ?? null;
+
+  let portfolioFundId: string | null = null;
+  if (commitment) {
+    const { data: pfByCommit } = await supabase
+      .from('vc_portfolio_funds')
+      .select('id')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('commitment_id', commitment.id)
+      .maybeSingle();
+    portfolioFundId = (pfByCommit as { id: string } | null)?.id ?? null;
+  }
+  if (!portfolioFundId) {
+    const { data: pfByApp } = await supabase
+      .from('vc_portfolio_funds')
+      .select('id')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('application_id', row.id)
+      .maybeSingle();
+    portfolioFundId = (pfByApp as { id: string } | null)?.id ?? null;
+  }
+
+  let siteVisitReportSignedUrl: string | null = null;
+  if (siteVisit?.report_file_path) {
+    const { data: signed } = await supabase.storage
+      .from('application-documents')
+      .createSignedUrl(siteVisit.report_file_path, 3600);
+    siteVisitReportSignedUrl = signed?.signedUrl ?? null;
+  }
+
+  let contractFileSignedUrl: string | null = null;
+  if (contract?.contract_file_path) {
+    const { data: signedC } = await supabase.storage
+      .from('application-documents')
+      .createSignedUrl(contract.contract_file_path, 3600);
+    contractFileSignedUrl = signedC?.signedUrl ?? null;
+  }
+
+  return (
+    <div className="w-full max-w-none space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Button asChild variant="outline" size="sm">
+          <Link href="/fund-applications">← Fund applications</Link>
+        </Button>
+      </div>
+
+      {!cfpStrip ? (
+        <div className={cn(dsCard.padded, 'flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between')}>
+          <div>
+            <p className={dsType.sectionTitle}>Call for Proposals</p>
+            <p className={cn('mt-1 text-sm', dsType.muted)}>No CFP linked yet. Assign an active CFP for this application.</p>
+          </div>
+          <AssignCfpWithRefresh applicationId={row.id} activeCfps={activeCfps} />
+        </div>
+      ) : null}
+
+      <ApplicationPipelineWorkspace
+        application={row}
+        cfp={cfpStrip}
+        prequalification={(prequalification as PrequalificationRow | null) ?? null}
+        presentation={
+          presentation
+            ? {
+                status: (presentation as { status: string | null }).status ?? null,
+                scheduled_date: (presentation as { scheduled_date: string | null }).scheduled_date ?? null,
+                actual_date: (presentation as { actual_date: string | null }).actual_date ?? null,
+              }
+            : null
+        }
+        panelSubmittedCount={panelSubmittedCount}
+        panelTotalCount={(panelMembers ?? []).length}
+        questionnaire={questionnaire}
+        assessment={assessment}
+        criteriaProgress={criteriaProgress}
+        canWrite={can(profile, 'write:applications')}
+        pipelineMetadata={row.pipeline_metadata}
+        siteVisit={siteVisit}
+        contract={contract}
+        commitment={commitment}
+        siteVisitReportSignedUrl={siteVisitReportSignedUrl}
+        contractFileSignedUrl={contractFileSignedUrl}
+        portfolioFundId={portfolioFundId}
+      />
+
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
+        {showPreScreeningLink ? (
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/applications/${row.id}/prequalification`}>Pre-qualification</Link>
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
