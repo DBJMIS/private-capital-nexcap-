@@ -97,25 +97,36 @@ export default async function PortfolioExecutivePage() {
   const tenantId = profile.tenant_id;
   const supabase = createServerClient();
 
+  const EXEC_FUND_SELECT = `
+    id,
+    fund_name,
+    manager_name,
+    currency,
+    listed,
+    notes,
+    dbj_commitment,
+    exchange_rate_jmd_usd,
+    fund_category,
+    is_pvc,
+    dbj_pro_rata_pct,
+    vc_reporting_obligations (
+      id,
+      status,
+      report_type,
+      due_date,
+      period_label,
+      days_overdue
+    )
+  `;
+
+  const SNAPSHOT_SELECT =
+    'id, tenant_id, fund_id, period_year, period_quarter, snapshot_date, nav, committed_capital, distributions_in_period, reported_irr, investor_remark, source_obligation_id, created_at, updated_at';
+
+  const ASSESSMENT_SELECT =
+    'id, fund_id, weighted_total_score, category, divestment_recommendation, approved_at, status';
+
   const [fundsRes, callsRes, distRes, snapsRes, assessRes] = await Promise.all([
-    supabase
-      .from('vc_portfolio_funds')
-      .select(
-        `
-        *,
-        vc_reporting_obligations (
-          id,
-          status,
-          report_type,
-          due_date,
-          period_label,
-          days_overdue
-        )
-      `,
-      )
-      .eq('tenant_id', tenantId)
-      .eq('fund_status', 'active')
-      .order('fund_name'),
+    supabase.from('vc_portfolio_funds').select(EXEC_FUND_SELECT).eq('tenant_id', tenantId).eq('fund_status', 'active').order('fund_name'),
     supabase
       .from('vc_capital_calls')
       .select(
@@ -140,10 +151,10 @@ export default async function PortfolioExecutivePage() {
       )
       .eq('tenant_id', tenantId),
     supabase.from('vc_distributions').select('fund_id, distribution_date, amount, currency').eq('tenant_id', tenantId).order('distribution_date', { ascending: true }),
-    supabase.from('vc_fund_snapshots').select('*').eq('tenant_id', tenantId),
+    supabase.from('vc_fund_snapshots').select(SNAPSHOT_SELECT).eq('tenant_id', tenantId),
     supabase
       .from('vc_quarterly_assessments')
-      .select('*')
+      .select(ASSESSMENT_SELECT)
       .eq('tenant_id', tenantId)
       .eq('status', 'approved')
       .order('approved_at', { ascending: false }),

@@ -13,20 +13,41 @@ import type { ActiveCfpOption } from '@/components/fund-applications/AssignCfpMe
 
 export const dynamic = 'force-dynamic';
 
-export default async function FundApplicationsPage() {
+const PAGE_SIZE = 50;
+
+function clampPage(n: number): number {
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(n, 10_000);
+}
+
+export default async function FundApplicationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   await requireAuth();
   const profile = await getProfile();
   if (!profile || !can(profile, 'write:applications')) {
     return <p className="text-sm text-red-600">Forbidden</p>;
   }
 
+  const sp = await searchParams;
+  const page = clampPage(parseInt(sp.page ?? '1', 10));
+  const from = (page - 1) * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+
   const supabase = createServerClient();
-  const { data: rows } = await supabase
+  const { data: rows, count, error: appsErr } = await supabase
     .from('vc_fund_applications')
-    .select('id, fund_name, status, submitted_at, created_at, cfp_id')
+    .select('id, fund_name, status, submitted_at, created_at, cfp_id', { count: 'exact' })
     .eq('tenant_id', profile.tenant_id)
     .is('deleted_at', null)
-    .order('updated_at', { ascending: false });
+    .order('updated_at', { ascending: false })
+    .range(from, to);
+
+  if (appsErr) {
+    return <p className="text-sm text-red-600">Could not load applications: {appsErr.message}</p>;
+  }
 
   const list = (rows ?? []) as Array<{
     id: string;
@@ -38,22 +59,25 @@ export default async function FundApplicationsPage() {
   }>;
 
   const cfpIds = [...new Set(list.map((r) => r.cfp_id).filter((x): x is string => !!x))];
+
+  const [cfpsRes, activeRes] = await Promise.all([
+    cfpIds.length
+      ? supabase.from('vc_cfps').select('id, title').eq('tenant_id', profile.tenant_id).in('id', cfpIds)
+      : Promise.resolve({ data: [] as { id: string; title: string }[] }),
+    supabase
+      .from('vc_cfps')
+      .select('id, title, closing_date')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('status', 'active')
+      .order('closing_date', { ascending: true }),
+  ]);
+
   const cfpTitleById = new Map<string, string>();
-  if (cfpIds.length) {
-    const { data: cfps } = await supabase.from('vc_cfps').select('id, title').eq('tenant_id', profile.tenant_id).in('id', cfpIds);
-    for (const c of cfps ?? []) {
-      cfpTitleById.set((c as { id: string }).id, (c as { title: string }).title);
-    }
+  for (const c of cfpsRes.data ?? []) {
+    cfpTitleById.set((c as { id: string }).id, (c as { title: string }).title);
   }
 
-  const { data: activeRows } = await supabase
-    .from('vc_cfps')
-    .select('id, title, closing_date')
-    .eq('tenant_id', profile.tenant_id)
-    .eq('status', 'active')
-    .order('closing_date', { ascending: true });
-
-  const activeCfps: ActiveCfpOption[] = (activeRows ?? []).map((r) => ({
+  const activeCfps: ActiveCfpOption[] = (activeRes.data ?? []).map((r) => ({
     id: (r as { id: string }).id,
     title: (r as { title: string }).title,
     closing_date: (r as { closing_date: string }).closing_date,
@@ -64,7 +88,9 @@ export default async function FundApplicationsPage() {
     cfp_title: r.cfp_id ? cfpTitleById.get(r.cfp_id) ?? null : null,
   }));
 
-  const empty = list.length === 0;
+  const total = count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const empty = total === 0;
 
   return (
     <div className="space-y-6">
@@ -84,7 +110,7 @@ export default async function FundApplicationsPage() {
       </div>
 
       <section className={dsCard.padded}>
-        <SectionHeader icon={ClipboardList} iconVariant="navy" title="Applications" count={list.length} />
+        <SectionHeader icon={ClipboardList} iconVariant="navy" title="Applications" count={total} />
 
         {empty ? (
           <EmptyState
@@ -93,7 +119,26 @@ export default async function FundApplicationsPage() {
             subtitle="Applications appear here once they are created for your tenant."
           />
         ) : (
-          <FundApplicationsListClient initialRows={initialRows} activeCfps={activeCfps} />
+          <>
+            <FundApplicationsListClient initialRows={initialRows} activeCfps={activeCfps} />
+            {totalPages > 1 ? (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-gray-500">
+                {page <= 1 ? (
+                  <span className="opacity-40">← Previous</span>
+                ) : (
+                  <Link href={`/fund-applications?page=${page - 1}`}>← Previous</Link>
+                )}
+                <span>
+                  Page {page} of {totalPages}
+                </span>
+                {page >= totalPages ? (
+                  <span className="opacity-40">Next →</span>
+                ) : (
+                  <Link href={`/fund-applications?page=${page + 1}`}>Next →</Link>
+                )}
+              </div>
+            ) : null}
+          </>
         )}
       </section>
     </div>

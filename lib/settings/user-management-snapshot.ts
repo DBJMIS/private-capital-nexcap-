@@ -59,20 +59,23 @@ function daysAgoLabel(iso: string | null | undefined): string {
   return `${days} days ago`;
 }
 
+const PROFILE_LIST_SELECT = 'id, full_name, email, role, created_at, is_active, user_id, tenant_id, updated_at, department';
+const ROLE_LIST_SELECT =
+  'id, tenant_id, profile_id, role, assigned_at, assigned_by, is_active, deactivated_at, deactivated_by';
+const INVITE_LIST_SELECT =
+  'id, tenant_id, email, full_name, role, token_expires_at, status, invited_by, created_at';
+
 export async function loadUserManagementSnapshot(
   supabase: SupabaseClient,
   tenantId: string,
 ): Promise<UserManagementSnapshot> {
-  const { data: allProfiles } = await supabase.from('vc_profiles').select('*').eq('tenant_id', tenantId);
-  const { data: roleRows } = await supabase
-    .from('vc_user_roles')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .order('assigned_at', { ascending: false });
+  const [{ data: allProfiles }, { data: roleRows }, { data: invites }] = await Promise.all([
+    supabase.from('vc_profiles').select(PROFILE_LIST_SELECT).eq('tenant_id', tenantId),
+    supabase.from('vc_user_roles').select(ROLE_LIST_SELECT).eq('tenant_id', tenantId).order('assigned_at', { ascending: false }),
+    supabase.from('vc_invitations').select(INVITE_LIST_SELECT).eq('tenant_id', tenantId).order('created_at', { ascending: false }),
+  ]);
 
   const profiles = (allProfiles ?? []) as ProfileRow[];
-  console.log('Tenant ID:', tenantId);
-  console.log('Total users loaded:', profiles.length);
 
   const profileById = new Map(profiles.map((p) => [p.id, p]));
   const roles = (roleRows ?? []) as UserRoleRowCompat[];
@@ -96,13 +99,17 @@ export async function loadUserManagementSnapshot(
     }
   }
 
+  const profileByIdForLookup = new Map(profiles.map((p) => [p.id, p]));
   const relatedProfileIds = [
     ...new Set(roles.flatMap((r) => [r.assigned_by, r.deactivated_by]).filter(Boolean)),
   ] as string[];
-  let assignerById = new Map<string, ProfileRow>();
-  if (relatedProfileIds.length > 0) {
-    const { data: assigners } = await supabase.from('vc_profiles').select('*').in('id', relatedProfileIds);
-    assignerById = new Map(((assigners ?? []) as ProfileRow[]).map((p) => [p.id, p]));
+  const missingAssignerIds = relatedProfileIds.filter((id) => !profileByIdForLookup.has(id));
+  let assignerById = new Map<string, ProfileRow>(profiles.map((p) => [p.id, p]));
+  if (missingAssignerIds.length > 0) {
+    const { data: assigners } = await supabase.from('vc_profiles').select(PROFILE_LIST_SELECT).in('id', missingAssignerIds);
+    for (const p of (assigners ?? []) as ProfileRow[]) {
+      assignerById.set(p.id, p);
+    }
   }
 
   const users: UserRowVm[] = profiles.map((p) => {
@@ -124,23 +131,15 @@ export async function loadUserManagementSnapshot(
     };
   });
 
-  console.log(
-    'Users with roles:',
-    users.filter((u) => !!u.role).length,
-  );
-
-  const { data: invites } = await supabase
-    .from('vc_invitations')
-    .select('*')
-    .eq('tenant_id', tenantId)
-    .order('created_at', { ascending: false });
-
   const invList = (invites ?? []) as InviteRow[];
   const inviterIds = [...new Set(invList.map((i) => i.invited_by).filter(Boolean))] as string[];
-  let inviterById = new Map<string, ProfileRow>();
-  if (inviterIds.length > 0) {
-    const { data: inviters } = await supabase.from('vc_profiles').select('*').in('id', inviterIds);
-    inviterById = new Map(((inviters ?? []) as ProfileRow[]).map((p) => [p.id, p]));
+  const missingInviterIds = inviterIds.filter((id) => !assignerById.has(id));
+  let inviterById = new Map<string, ProfileRow>(assignerById);
+  if (missingInviterIds.length > 0) {
+    const { data: inviters } = await supabase.from('vc_profiles').select(PROFILE_LIST_SELECT).in('id', missingInviterIds);
+    for (const p of (inviters ?? []) as ProfileRow[]) {
+      inviterById.set(p.id, p);
+    }
   }
 
   const pending_invitations: PendingInviteVm[] = invList

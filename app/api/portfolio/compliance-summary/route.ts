@@ -24,9 +24,5 @@ export async function GET() {
     return NextResponse.json({ error }, { status: 500 });
   }
 
-  console.log('Funds loaded:', funds?.length);
-  const first = funds?.[0] as { vc_reporting_obligations?: unknown[] } | undefined;
-  console.log('First fund obligations:', first?.vc_reporting_obligations?.length);
-
   return NextResponse.json({ funds: rows });
 }

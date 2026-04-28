@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { createPortal } from 'react-dom';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   Calendar as CalendarIcon,
@@ -16,6 +16,7 @@ import {
 import { UnifiedExtractionReviewModal, type UnifiedExtractApiResponse } from '@/components/portfolio/UnifiedExtractionReviewModal';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { calendarListRange, calendarMonthGridRange } from '@/lib/portfolio/calendar-grid-range';
 import { cn } from '@/lib/utils';
 
 type Obligation = {
@@ -121,21 +122,32 @@ const SIDEBAR_GROUPS: SidebarGroup[] = [
 export type PortfolioReportingCalendarProps = {
   canWrite?: boolean;
   submitterName?: string;
+  initialObligations?: Obligation[];
+  initialFunds?: { id: string; fund_name: string }[];
+  initialMonth?: number;
+  initialYear?: number;
 };
 
 export function PortfolioReportingCalendar({
   canWrite = false,
   submitterName = 'Staff',
+  initialObligations = [],
+  initialFunds = [],
+  initialMonth,
+  initialYear,
 }: PortfolioReportingCalendarProps) {
+  const resolvedInitialMonth = initialMonth ?? new Date().getMonth();
+  const resolvedInitialYear = initialYear ?? new Date().getFullYear();
+
   const [mounted, setMounted] = useState(false);
-  const [cursor, setCursor] = useState(() => new Date());
+  const [cursor, setCursor] = useState(() => new Date(resolvedInitialYear, resolvedInitialMonth, 1));
   const [view, setView] = useState<View>('month');
-  const [rows, setRows] = useState<Obligation[]>([]);
-  const [funds, setFunds] = useState<{ id: string; fund_name: string }[]>([]);
+  const [rawRows, setRawRows] = useState<Obligation[]>(initialObligations);
+  const [funds, setFunds] = useState<{ id: string; fund_name: string }[]>(initialFunds);
   const [fundFilter, setFundFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(initialObligations.length === 0 && initialFunds.length === 0);
   const [err, setErr] = useState<string | null>(null);
   const [slide, setSlide] = useState<Obligation | null>(null);
   const [slideBusy, setSlideBusy] = useState(false);
@@ -165,41 +177,62 @@ export function PortfolioReportingCalendar({
 
   const range = useMemo(() => {
     if (view === 'month') {
-      const s = startOfMonth(cursor);
-      const gridStart = weekStartMonday(s);
-      const gridEnd = addDays(gridStart, 41);
-      return { from: toYmd(gridStart), to: toYmd(gridEnd) };
+      return calendarMonthGridRange(cursor);
     }
-    const s = addDays(cursor, -45);
-    const e = addDays(cursor, 120);
-    return { from: toYmd(s), to: toYmd(e) };
+    return calendarListRange(cursor);
   }, [cursor, view]);
 
-  const load = useCallback(async () => {
+  const rows = useMemo(() => {
+    let list = rawRows;
+    if (fundFilter !== 'all') list = list.filter((o) => o.fund_id === fundFilter);
+    if (statusFilter !== 'all') list = list.filter((o) => o.status === statusFilter);
+    if (typeFilter !== 'all') list = list.filter((o) => o.report_type === typeFilter);
+    return list;
+  }, [rawRows, fundFilter, statusFilter, typeFilter]);
+
+  const fetchRange = useCallback(async (from: string, to: string) => {
     setLoading(true);
     setErr(null);
     try {
-      const q = new URLSearchParams({ from_date: range.from, to_date: range.to });
+      const q = new URLSearchParams({ from_date: from, to_date: to });
       const res = await fetch(`/api/portfolio/calendar?${q}`);
       const j = (await res.json()) as { obligations?: Obligation[]; error?: string };
       if (!res.ok) throw new Error(j.error ?? 'Failed');
-      let list = j.obligations ?? [];
-      if (fundFilter !== 'all') list = list.filter((o) => o.fund_id === fundFilter);
-      if (statusFilter !== 'all') list = list.filter((o) => o.status === statusFilter);
-      if (typeFilter !== 'all') list = list.filter((o) => o.report_type === typeFilter);
-      setRows(list);
+      setRawRows(j.obligations ?? []);
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Failed');
     } finally {
       setLoading(false);
     }
-  }, [range.from, range.to, fundFilter, statusFilter, typeFilter]);
+  }, []);
+
+  const refreshCurrentRange = useCallback(async () => {
+    await fetchRange(range.from, range.to);
+  }, [fetchRange, range.from, range.to]);
+
+  const initialMonthSeedDone = useRef(false);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    const isInitialMonthGrid =
+      view === 'month' &&
+      cursor.getMonth() === resolvedInitialMonth &&
+      cursor.getFullYear() === resolvedInitialYear;
+
+    if (isInitialMonthGrid && !initialMonthSeedDone.current) {
+      initialMonthSeedDone.current = true;
+      setRawRows(initialObligations);
+      setLoading(false);
+      return;
+    }
+
+    void fetchRange(range.from, range.to);
+  }, [cursor, view, range.from, range.to, resolvedInitialMonth, resolvedInitialYear, initialObligations, fetchRange]);
 
   useEffect(() => {
+    if (initialFunds.length > 0) {
+      setFunds(initialFunds);
+      return;
+    }
     void (async () => {
       const res = await fetch('/api/portfolio/funds');
       const j = (await res.json()) as {
@@ -209,7 +242,7 @@ export function PortfolioReportingCalendar({
         setFunds(j.funds.map((x) => ({ id: x.fund.id, fund_name: x.fund.fund_name })));
       }
     })();
-  }, []);
+  }, [initialFunds]);
 
   const byDay = useMemo(() => {
     const m = new Map<string, Obligation[]>();
@@ -295,7 +328,7 @@ export function PortfolioReportingCalendar({
       });
       if (!res.ok) throw new Error((await res.json()).error ?? 'Failed');
       dismissSlide();
-      void load();
+      void refreshCurrentRange();
     } catch {
       /* keep slide open; could set toast */
     } finally {
@@ -314,7 +347,7 @@ export function PortfolioReportingCalendar({
       });
       if (!res.ok) throw new Error((await res.json()).error ?? 'Failed');
       dismissSlide();
-      void load();
+      void refreshCurrentRange();
     } catch {
       /* noop */
     } finally {
@@ -451,7 +484,7 @@ export function PortfolioReportingCalendar({
                     } else {
                       dismissSlide();
                     }
-                    void load();
+                    void refreshCurrentRange();
                   }
                 }}
               />
@@ -809,7 +842,7 @@ export function PortfolioReportingCalendar({
         onSaved={() => {
           setUnifiedExtractData(null);
           dismissSlide();
-          void load();
+          void refreshCurrentRange();
         }}
       />
     ) : null}

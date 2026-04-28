@@ -6,6 +6,10 @@ import { FundDetailClient } from '@/components/portfolio/FundDetailClient';
 import { createServerClient } from '@/lib/supabase/server';
 import { getProfile, requireAuth } from '@/lib/auth/session';
 import { can } from '@/lib/auth/permissions';
+import {
+  computeFundObligationOverview,
+  type FundObligationOverviewObligation,
+} from '@/lib/portfolio/fund-obligation-overview';
 import { refreshObligationStatuses } from '@/lib/portfolio/reporting-engine';
 import type { PortfolioFundRow } from '@/lib/portfolio/types';
 
@@ -29,27 +33,30 @@ export default async function PortfolioFundDetailPage({ params }: { params: Prom
   const supabase = createServerClient();
   await refreshObligationStatuses(supabase, profile.tenant_id);
 
-  const { data: fund, error } = await supabase
-    .from('vc_portfolio_funds')
-    .select('*')
-    .eq('tenant_id', profile.tenant_id)
-    .eq('id', id)
-    .maybeSingle();
+  const [{ data: fund, error }, { data: obligations }] = await Promise.all([
+    supabase.from('vc_portfolio_funds').select('*').eq('tenant_id', profile.tenant_id).eq('id', id).maybeSingle(),
+    supabase
+      .from('vc_reporting_obligations')
+      .select('*')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('fund_id', id)
+      .order('due_date', { ascending: true }),
+  ]);
 
   if (error || !fund) notFound();
 
-  const { data: obligations } = await supabase
-    .from('vc_reporting_obligations')
-    .select('*')
-    .eq('tenant_id', profile.tenant_id)
-    .eq('fund_id', id)
-    .order('due_date', { ascending: true });
+  const allObs = (obligations ?? []) as FundObligationOverviewObligation[];
+  const obligationOverview = computeFundObligationOverview(allObs);
+  const sortedDesc = [...allObs].sort((a, b) => b.due_date.localeCompare(a.due_date));
+  const initialReportingRows = sortedDesc.slice(0, 20);
 
   return (
     <Suspense fallback={<div className="py-10 text-center text-sm text-gray-500">Loading fund…</div>}>
       <FundDetailClient
         fund={fund as Row}
-        obligations={(obligations ?? []) as Record<string, unknown>[]}
+        obligationOverview={obligationOverview}
+        obligationCount={allObs.length}
+        initialReportingRows={initialReportingRows as Record<string, unknown>[]}
         canWrite={can(profile, 'write:applications')}
         canDeleteSnapshots={can(profile, 'delete:records')}
       />

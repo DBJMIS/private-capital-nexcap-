@@ -17,6 +17,75 @@ export const metadata: Metadata = {
 
 export const dynamic = 'force-dynamic';
 
+/** List view only — avoids large JSONB / text columns not used by Fund Monitoring. */
+const FUND_MONITORING_LIST_SELECT = [
+  'id',
+  'tenant_id',
+  'application_id',
+  'commitment_id',
+  'fund_name',
+  'manager_name',
+  'fund_representative',
+  'manager_email',
+  'manager_phone',
+  'currency',
+  'total_fund_commitment',
+  'dbj_commitment',
+  'dbj_pro_rata_pct',
+  'listed',
+  'fund_status',
+  'year_end_month',
+  'quarterly_report_due_days',
+  'audit_report_due_days',
+  'requires_quarterly_financial',
+  'requires_quarterly_inv_mgmt',
+  'requires_audited_annual',
+  'requires_inhouse_quarterly',
+  'report_months',
+  'audit_month',
+  'exchange_rate_jmd_usd',
+  'commitment_date',
+  'fund_close_date',
+  'fund_life_years',
+  'investment_period_years',
+  'contacts',
+  'notes',
+  'created_by',
+  'created_at',
+  'updated_at',
+  'fund_category',
+  'fund_end_date',
+  'is_pvc',
+  'management_fee_pct',
+  'performance_fee_pct',
+  'hurdle_rate_pct',
+  'target_irr_pct',
+].join(', ');
+
+const CAPITAL_CALL_MONITORING_SELECT = `
+  id,
+  fund_id,
+  call_amount,
+  currency,
+  status,
+  date_of_notice,
+  notice_number,
+  total_called_to_date,
+  vc_capital_call_items (
+    id,
+    purpose_category,
+    amount,
+    investee_company,
+    description,
+    currency
+  )
+`;
+
+const DISTRIBUTION_MONITORING_SELECT = 'id, fund_id, distribution_date, amount, currency';
+
+const SNAPSHOT_MONITORING_SELECT =
+  'id, tenant_id, fund_id, period_year, period_quarter, snapshot_date, nav, committed_capital, distributions_in_period, reported_irr, investor_remark, source_obligation_id, created_at, updated_at';
+
 function toUsd(fund: PortfolioFundRow): number {
   const n = Number(fund.dbj_commitment);
   if (fund.currency === 'JMD') {
@@ -38,12 +107,12 @@ export default async function PortfolioFundsPage() {
 
   const { data: funds } = await supabase
     .from('vc_portfolio_funds')
-    .select('*')
+    .select(FUND_MONITORING_LIST_SELECT)
     .eq('tenant_id', profile.tenant_id)
     .eq('fund_status', 'active')
     .order('fund_name', { ascending: true });
 
-  const fundRowsRaw = (funds ?? []) as PortfolioFundRowWithMonitorMetrics[];
+  const fundRowsRaw = (funds ?? []) as unknown as PortfolioFundRowWithMonitorMetrics[];
   const ids = fundRowsRaw.map((f) => f.id);
   const obligationsByFund = new Map<string, ObligationLite[]>();
   const callsByFund = new Map<string, VcCapitalCall[]>();
@@ -57,9 +126,13 @@ export default async function PortfolioFundsPage() {
         .select('fund_id, report_type, status, due_date')
         .eq('tenant_id', profile.tenant_id)
         .in('fund_id', ids),
-      supabase.from('vc_capital_calls').select('*').eq('tenant_id', profile.tenant_id).in('fund_id', ids),
-      supabase.from('vc_distributions').select('*').eq('tenant_id', profile.tenant_id).in('fund_id', ids),
-      supabase.from('vc_fund_snapshots').select('*').eq('tenant_id', profile.tenant_id).in('fund_id', ids),
+      supabase.from('vc_capital_calls').select(CAPITAL_CALL_MONITORING_SELECT).eq('tenant_id', profile.tenant_id).in('fund_id', ids),
+      supabase
+        .from('vc_distributions')
+        .select(DISTRIBUTION_MONITORING_SELECT)
+        .eq('tenant_id', profile.tenant_id)
+        .in('fund_id', ids),
+      supabase.from('vc_fund_snapshots').select(SNAPSHOT_MONITORING_SELECT).eq('tenant_id', profile.tenant_id).in('fund_id', ids),
     ]);
 
     for (const row of obs ?? []) {
@@ -69,18 +142,18 @@ export default async function PortfolioFundsPage() {
       obligationsByFund.set(r.fund_id, list);
     }
 
-    for (const c of (calls ?? []) as VcCapitalCall[]) {
+    for (const c of (calls ?? []) as unknown as VcCapitalCall[]) {
       const list = callsByFund.get(c.fund_id) ?? [];
       list.push(c);
       callsByFund.set(c.fund_id, list);
     }
-    for (const d of (dists ?? []) as VcDistribution[]) {
+    for (const d of (dists ?? []) as unknown as VcDistribution[]) {
       const list = distByFund.get(d.fund_id) ?? [];
       list.push(d);
       distByFund.set(d.fund_id, list);
     }
 
-    latestSnaps = latestSnapshotByFund((snaps ?? []) as VcFundSnapshot[]);
+    latestSnaps = latestSnapshotByFund((snaps ?? []) as unknown as VcFundSnapshot[]);
   }
 
   const fundRows: PortfolioFundRowWithMonitorMetrics[] = fundRowsRaw.map((f) => {

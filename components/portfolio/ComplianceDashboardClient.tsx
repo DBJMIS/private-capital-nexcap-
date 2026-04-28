@@ -146,6 +146,10 @@ export function ComplianceDashboardClient({
   const [overdueFundFilter, setOverdueFundFilter] = useState('all');
   const [overdueTypeFilter, setOverdueTypeFilter] = useState('all');
   const [overdueSort, setOverdueSort] = useState<'days' | 'fund' | 'due'>('days');
+  const [overduePage, setOverduePage] = useState(1);
+  const [overdueTotal, setOverdueTotal] = useState(0);
+  const [overdueTotalPages, setOverdueTotalPages] = useState(1);
+  const [overdueServerPaged, setOverdueServerPaged] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -176,16 +180,30 @@ export function ComplianceDashboardClient({
     setOverdueLoading(true);
     setErr(null);
     try {
-      const res = await fetch('/api/portfolio/compliance/overdue');
-      const j = (await res.json()) as { obligations?: OverdueApiRow[]; error?: string };
+      const params = new URLSearchParams();
+      params.set('sort', overdueSort);
+      params.set('page', String(overduePage));
+      if (overdueFundFilter !== 'all') params.set('fund_id', overdueFundFilter);
+      if (overdueTypeFilter !== 'all') params.set('report_type', overdueTypeFilter);
+      const res = await fetch(`/api/portfolio/compliance/overdue?${params.toString()}`);
+      const j = (await res.json()) as {
+        obligations?: OverdueApiRow[];
+        total?: number;
+        totalPages?: number;
+        paged?: boolean;
+        error?: string;
+      };
       if (!res.ok) throw new Error(j.error ?? 'Failed');
       setOverdueRows(j.obligations ?? []);
+      setOverdueTotal(typeof j.total === 'number' ? j.total : j.obligations?.length ?? 0);
+      setOverdueTotalPages(typeof j.totalPages === 'number' ? Math.max(1, j.totalPages) : 1);
+      setOverdueServerPaged(Boolean(j.paged));
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Failed');
     } finally {
       setOverdueLoading(false);
     }
-  }, []);
+  }, [overduePage, overdueFundFilter, overdueTypeFilter, overdueSort]);
 
   const loadActivity = useCallback(async () => {
     setActivityLoading(true);
@@ -337,16 +355,6 @@ DBJ Private Capital Team`;
       setBusy(false);
     }
   };
-
-  const filteredOverdue = useMemo(() => {
-    let list = [...overdueRows];
-    if (overdueFundFilter !== 'all') list = list.filter((r) => r.fund_id === overdueFundFilter);
-    if (overdueTypeFilter !== 'all') list = list.filter((r) => r.report_type === overdueTypeFilter);
-    if (overdueSort === 'days') list.sort((a, b) => b.days_overdue - a.days_overdue);
-    else if (overdueSort === 'fund') list.sort((a, b) => a.fund_name.localeCompare(b.fund_name));
-    else list.sort((a, b) => (a.due_date < b.due_date ? -1 : 1));
-    return list;
-  }, [overdueRows, overdueFundFilter, overdueTypeFilter, overdueSort]);
 
   const rowBg = (days: number) => {
     if (days > 365) return 'bg-red-50';
@@ -589,14 +597,17 @@ DBJ Private Capital Team`;
           <div>
             <h2 className="text-lg font-semibold text-[#0B1F45]">Overdue Reporting Obligations</h2>
             <p className="text-sm text-red-600">
-              {overdueLoading ? 'Loading…' : `${filteredOverdue.length} obligations past due date`}
+              {overdueLoading ? 'Loading…' : `${overdueTotal} obligations past due date`}
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
             <select
               className="h-9 rounded-md border border-input bg-background px-2 text-sm"
               value={overdueFundFilter}
-              onChange={(e) => setOverdueFundFilter(e.target.value)}
+              onChange={(e) => {
+                setOverduePage(1);
+                setOverdueFundFilter(e.target.value);
+              }}
             >
               <option value="all">All funds</option>
               {funds.map((f) => (
@@ -608,7 +619,10 @@ DBJ Private Capital Team`;
             <select
               className="h-9 rounded-md border border-input bg-background px-2 text-sm"
               value={overdueTypeFilter}
-              onChange={(e) => setOverdueTypeFilter(e.target.value)}
+              onChange={(e) => {
+                setOverduePage(1);
+                setOverdueTypeFilter(e.target.value);
+              }}
             >
               <option value="all">All types</option>
               {Object.entries(REPORT_SHORT).map(([k, v]) => (
@@ -620,7 +634,10 @@ DBJ Private Capital Team`;
             <select
               className="h-9 rounded-md border border-input bg-background px-2 text-sm"
               value={overdueSort}
-              onChange={(e) => setOverdueSort(e.target.value as typeof overdueSort)}
+              onChange={(e) => {
+                setOverduePage(1);
+                setOverdueSort(e.target.value as typeof overdueSort);
+              }}
             >
               <option value="days">Most Overdue</option>
               <option value="fund">Fund Name</option>
@@ -648,14 +665,14 @@ DBJ Private Capital Team`;
                         <Loader2 className="mx-auto h-6 w-6 animate-spin" />
                       </td>
                     </tr>
-                  ) : filteredOverdue.length === 0 ? (
+                  ) : overdueRows.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="px-4 py-10 text-center text-gray-500">
                         No overdue obligations.
                       </td>
                     </tr>
                   ) : (
-                    filteredOverdue.map((o) => (
+                    overdueRows.map((o) => (
                       <tr key={o.id} className={rowBg(o.days_overdue)}>
                         <td className="px-4 py-3">
                           <p className="font-medium text-[#0B1F45]">{o.fund_name}</p>
@@ -740,6 +757,29 @@ DBJ Private Capital Team`;
               </table>
             </div>
           </div>
+          {overdueServerPaged && overdueTotalPages > 1 ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-500">
+              <button
+                type="button"
+                className="rounded border border-gray-200 bg-white px-3 py-1.5 disabled:opacity-40"
+                disabled={overduePage <= 1 || overdueLoading}
+                onClick={() => setOverduePage((p) => Math.max(1, p - 1))}
+              >
+                ← Previous
+              </button>
+              <span>
+                Page {overduePage} of {overdueTotalPages}
+              </span>
+              <button
+                type="button"
+                className="rounded border border-gray-200 bg-white px-3 py-1.5 disabled:opacity-40"
+                disabled={overduePage >= overdueTotalPages || overdueLoading}
+                onClick={() => setOverduePage((p) => p + 1)}
+              >
+                Next →
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 

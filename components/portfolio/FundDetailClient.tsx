@@ -2,11 +2,11 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, Upload } from 'lucide-react';
 
 import { FundAssessmentsTab } from '@/components/portfolio/FundAssessmentsTab';
-import { FundPctuProfileEditor } from '@/components/portfolio/FundPctuProfileEditor';
+import { FundSettingsShell } from '@/components/portfolio/FundSettingsShell';
 import { FundCapitalCallsTab } from '@/components/portfolio/FundCapitalCallsTab';
 import { FundDistributionsTab } from '@/components/portfolio/FundDistributionsTab';
 import { FundPerformanceTab } from '@/components/portfolio/FundPerformanceTab';
@@ -15,7 +15,7 @@ import { UnifiedExtractionReviewModal, type UnifiedExtractApiResponse } from '@/
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { complianceRateByType, summarizeCompliance } from '@/lib/portfolio/compliance';
+import type { FundObligationOverview } from '@/lib/portfolio/fund-obligation-overview';
 import { fundCategoryBadgeClassName, fundCategoryLabel } from '@/lib/portfolio/fund-category';
 import type { PortfolioFundRow } from '@/lib/portfolio/types';
 import type { Json } from '@/types/database';
@@ -123,19 +123,30 @@ type Tab = 'overview' | 'reporting' | 'calls' | 'distributions' | 'performance' 
 
 export function FundDetailClient({
   fund: initialFund,
-  obligations: initialObligations,
+  obligationOverview: initialObligationOverview,
+  obligationCount,
+  initialReportingRows,
   canWrite,
   canDeleteSnapshots,
 }: {
   fund: PortfolioFundRow;
-  obligations: Record<string, unknown>[];
+  obligationOverview: FundObligationOverview;
+  obligationCount: number;
+  initialReportingRows: Record<string, unknown>[];
   canWrite: boolean;
   canDeleteSnapshots: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [fund, setFund] = useState(initialFund);
-  const [rows, setRows] = useState<Obligation[]>(() => initialObligations as Obligation[]);
+  const [hydration, setHydration] = useState<FundObligationOverview>(initialObligationOverview);
+  const [reportingRows, setReportingRows] = useState<Obligation[]>(() => initialReportingRows as Obligation[]);
+  const [reportingPage, setReportingPage] = useState(1);
+  const [reportingTotal, setReportingTotal] = useState(obligationCount);
+  const [reportingTotalPages, setReportingTotalPages] = useState(Math.max(1, Math.ceil(obligationCount / 50)));
+  const [reportingLoading, setReportingLoading] = useState(false);
+  const tabRef = useRef<Tab>('overview');
+  const reportingPageRef = useRef(1);
   const [tab, setTab] = useState<Tab>('overview');
   const [year, setYear] = useState<number | 'all'>('all');
   const [rType, setRType] = useState<string>('all');
@@ -153,53 +164,71 @@ export function FundDetailClient({
   const [revOpen, setRevOpen] = useState<Obligation | null>(null);
   const [revNotes, setRevNotes] = useState('');
 
-  const lite = useMemo(
-    () => rows.map((r) => ({ report_type: r.report_type, status: r.status, due_date: r.due_date })),
-    [rows],
+  useEffect(() => {
+    tabRef.current = tab;
+  }, [tab]);
+
+  useEffect(() => {
+    reportingPageRef.current = reportingPage;
+  }, [reportingPage]);
+
+  const summary = hydration.summary;
+  const dueSoon = hydration.dueSoon;
+  const overdueC = hydration.overdueC;
+  const outC = hydration.outC;
+  const acceptedYtd = hydration.acceptedYtd;
+  const recent = hydration.recent;
+  const docs = hydration.documentRows;
+  const years = hydration.reportingYears;
+
+  const loadReporting = useCallback(
+    async (page: number) => {
+      setReportingLoading(true);
+      try {
+        const params = new URLSearchParams();
+        params.set('page', String(page));
+        params.set('page_size', '50');
+        params.set('sort', obligationSort);
+        if (year !== 'all') params.set('year', String(year));
+        if (rType !== 'all') params.set('report_type', rType);
+        if (rStatus !== 'all') params.set('status', rStatus);
+        const res = await fetch(`/api/portfolio/funds/${fund.id}/obligations?${params}`);
+        const j = (await res.json()) as {
+          obligations?: Obligation[];
+          total?: number;
+          page?: number;
+          page_size?: number;
+          total_pages?: number;
+          error?: string;
+        };
+        if (!res.ok) throw new Error(j.error ?? 'Failed');
+        setReportingRows(j.obligations ?? []);
+        setReportingTotal(j.total ?? 0);
+        setReportingTotalPages(Math.max(1, j.total_pages ?? 1));
+        setReportingPage(j.page ?? page);
+      } finally {
+        setReportingLoading(false);
+      }
+    },
+    [fund.id, year, rType, rStatus, obligationSort],
   );
-  const summary = useMemo(() => summarizeCompliance(lite), [lite]);
-  const yNow = new Date().getFullYear();
 
-  const dueSoon = rows.filter((r) => r.status === 'due').length;
-  const overdueC = rows.filter((r) => r.status === 'overdue').length;
-  const outC = rows.filter((r) => r.status === 'outstanding').length;
-  const acceptedYtd = rows.filter((r) => r.status === 'accepted' && r.period_year === yNow).length;
-
-  const recent = useMemo(() => {
-    return [...rows].sort((a, b) => (a.due_date < b.due_date ? 1 : -1)).slice(0, 8);
-  }, [rows]);
-
-  const filtered = useMemo(() => {
-    const arr = rows.filter((r) => {
-      if (year !== 'all' && r.period_year !== year) return false;
-      if (rType !== 'all' && r.report_type !== rType) return false;
-      if (rStatus !== 'all' && r.status !== rStatus) return false;
-      return true;
-    });
-    arr.sort((a, b) => {
-      const c = a.due_date.localeCompare(b.due_date);
-      if (c !== 0) return obligationSort === 'due_desc' ? -c : c;
-      return a.id.localeCompare(b.id);
-    });
-    return arr;
-  }, [rows, year, rType, rStatus, obligationSort]);
-
-  const years = useMemo(() => {
-    const ys = new Set<number>();
-    rows.forEach((r) => ys.add(r.period_year));
-    const arr = [...ys].sort((a, b) => b - a);
-    if (arr.length === 0) {
-      for (let y = yNow + 1; y >= yNow - 4; y -= 1) arr.push(y);
-    }
-    return arr;
-  }, [rows, yNow]);
-
-  const docs = rows.filter((r) => r.document_path);
+  useEffect(() => {
+    if (tab !== 'reporting') return;
+    void loadReporting(reportingPage);
+  }, [tab, reportingPage, year, rType, rStatus, obligationSort, loadReporting]);
 
   const reload = async () => {
-    const res = await fetch(`/api/portfolio/funds/${fund.id}/obligations`);
-    const j = (await res.json()) as { obligations?: Obligation[]; error?: string };
-    if (res.ok && j.obligations) setRows(j.obligations);
+    try {
+      const ovRes = await fetch(`/api/portfolio/funds/${fund.id}/obligations?overview=1`);
+      const ovJ = (await ovRes.json()) as { overview?: FundObligationOverview; error?: string };
+      if (ovRes.ok && ovJ.overview) setHydration(ovJ.overview);
+      if (tabRef.current === 'reporting') {
+        await loadReporting(reportingPageRef.current);
+      }
+    } catch {
+      /* reload best-effort */
+    }
   };
 
   const refetchFund = async () => {
@@ -288,6 +317,10 @@ export function FundDetailClient({
       const el = form.elements.namedItem(name);
       return el instanceof HTMLInputElement && el.type === 'checkbox' && el.checked;
     };
+    const commitmentDate = String(fd.get('commitment_date') ?? '').trim();
+    const fundEndDate = String(fd.get('fund_end_date') ?? '').trim();
+    const fundCategory = String(fd.get('fund_category') ?? '').trim();
+
     const patch: Record<string, unknown> = {
       fund_name: String(fd.get('fund_name') ?? '').trim(),
       manager_name: String(fd.get('manager_name') ?? '').trim(),
@@ -306,6 +339,10 @@ export function FundDetailClient({
       requires_audited_annual: chk('requires_audited_annual'),
       requires_inhouse_quarterly: chk('requires_inhouse_quarterly'),
       notes: String(fd.get('notes') ?? '').trim() || null,
+      fund_category: fundCategory || null,
+      commitment_date: commitmentDate || null,
+      fund_end_date: fundEndDate || null,
+      is_pvc: chk('is_pvc'),
     };
     const contactsRaw = String(fd.get('contacts_json') ?? '[]');
     try {
@@ -717,7 +754,7 @@ export function FundDetailClient({
                     ['inhouse_quarterly', 'In-house Quarterly'],
                   ] as const
                 ).map(([k, lab]) => {
-                  const pct = complianceRateByType(lite, k);
+                  const pct = hydration.compliancePctByType[k];
                   return (
                     <div key={k}>
                       <div className="flex justify-between text-xs text-gray-600">
@@ -746,7 +783,10 @@ export function FundDetailClient({
               <select
                 className="mt-1 flex h-10 rounded-md border border-input bg-background px-3 text-sm"
                 value={year === 'all' ? 'all' : String(year)}
-                onChange={(e) => setYear(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                onChange={(e) => {
+                  setReportingPage(1);
+                  setYear(e.target.value === 'all' ? 'all' : Number(e.target.value));
+                }}
               >
                 <option value="all">All</option>
                 {years.map((y) => (
@@ -761,7 +801,10 @@ export function FundDetailClient({
               <select
                 className="mt-1 flex h-10 rounded-md border border-input bg-background px-3 text-sm"
                 value={rType}
-                onChange={(e) => setRType(e.target.value)}
+                onChange={(e) => {
+                  setReportingPage(1);
+                  setRType(e.target.value);
+                }}
               >
                 <option value="all">All</option>
                 <option value="quarterly_financial">Quarterly Financial</option>
@@ -775,7 +818,10 @@ export function FundDetailClient({
               <select
                 className="mt-1 flex h-10 rounded-md border border-input bg-background px-3 text-sm"
                 value={rStatus}
-                onChange={(e) => setRStatus(e.target.value)}
+                onChange={(e) => {
+                  setReportingPage(1);
+                  setRStatus(e.target.value);
+                }}
               >
                 <option value="all">All</option>
                 {['pending', 'due', 'submitted', 'under_review', 'accepted', 'outstanding', 'overdue', 'waived'].map((s) => (
@@ -790,7 +836,10 @@ export function FundDetailClient({
               <select
                 className="mt-1 flex h-10 rounded-md border border-input bg-background px-3 text-sm"
                 value={obligationSort}
-                onChange={(e) => setObligationSort(e.target.value as 'due_desc' | 'due_asc')}
+                onChange={(e) => {
+                  setReportingPage(1);
+                  setObligationSort(e.target.value as 'due_desc' | 'due_asc');
+                }}
               >
                 <option value="due_desc">Due date (newest first)</option>
                 <option value="due_asc">Due date (oldest first)</option>
@@ -817,7 +866,7 @@ export function FundDetailClient({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filtered.map((r) => {
+                {reportingRows.map((r) => {
                   const dd = daysUntilDue(r.due_date);
                   const sb = statusBadge(r.status);
                   return (
@@ -906,6 +955,33 @@ export function FundDetailClient({
               </tbody>
             </table>
           </div>
+          {reportingTotalPages > 1 ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 px-3 py-3 text-sm text-gray-600">
+              <span>
+                Page {reportingPage} of {reportingTotalPages} ({reportingTotal} total)
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={reportingLoading || reportingPage <= 1}
+                  onClick={() => setReportingPage((p) => Math.max(1, p - 1))}
+                >
+                  Previous
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={reportingLoading || reportingPage >= reportingTotalPages}
+                  onClick={() => setReportingPage((p) => p + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -956,119 +1032,13 @@ export function FundDetailClient({
       ) : null}
 
       {tab === 'settings' && canWrite ? (
-        <>
-        <form onSubmit={(e) => void saveSettings(e)} className="max-w-2xl space-y-4 rounded-xl border border-gray-200 bg-white p-6">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <Label htmlFor="fund_name">Fund name</Label>
-              <Input id="fund_name" name="fund_name" defaultValue={fund.fund_name} className="mt-1" required />
-            </div>
-            <div className="sm:col-span-2">
-              <Label htmlFor="manager_name">Manager name</Label>
-              <Input id="manager_name" name="manager_name" defaultValue={fund.manager_name} className="mt-1" required />
-            </div>
-            <div className="sm:col-span-2">
-              <Label htmlFor="fund_representative">Representative</Label>
-              <Input id="fund_representative" name="fund_representative" defaultValue={fund.fund_representative ?? ''} className="mt-1" />
-            </div>
-            <div>
-              <Label>Currency</Label>
-              <select name="currency" className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm" defaultValue={fund.currency}>
-                <option value="USD">USD</option>
-                <option value="JMD">JMD</option>
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="listed" className="flex items-center gap-2">
-                <input id="listed" name="listed" type="checkbox" defaultChecked={fund.listed} className="rounded border-gray-300" />
-                Listed
-              </Label>
-            </div>
-            <div>
-              <Label htmlFor="total_fund_commitment">Total fund commitment</Label>
-              <Input id="total_fund_commitment" name="total_fund_commitment" type="number" step="any" defaultValue={String(fund.total_fund_commitment)} className="mt-1" required />
-            </div>
-            <div>
-              <Label htmlFor="dbj_commitment">DBJ commitment</Label>
-              <Input id="dbj_commitment" name="dbj_commitment" type="number" step="any" defaultValue={String(fund.dbj_commitment)} className="mt-1" required />
-            </div>
-            <div>
-              <Label htmlFor="dbj_pro_rata_pct">DBJ pro-rata %</Label>
-              <Input id="dbj_pro_rata_pct" name="dbj_pro_rata_pct" type="number" step="0.01" defaultValue={String(fund.dbj_pro_rata_pct)} className="mt-1" required />
-            </div>
-            <div>
-              <Label htmlFor="year_end_month">Year end month</Label>
-              <select
-                id="year_end_month"
-                name="year_end_month"
-                className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                defaultValue={fund.year_end_month}
-              >
-                {MONTH_LONG.map((m, i) => (
-                  <option key={m} value={i + 1}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="quarterly_report_due_days">Quarterly report due days</Label>
-              <Input id="quarterly_report_due_days" name="quarterly_report_due_days" type="number" defaultValue={fund.quarterly_report_due_days} className="mt-1" />
-            </div>
-            <div>
-              <Label htmlFor="audit_report_due_days">Audit report due days</Label>
-              <Input id="audit_report_due_days" name="audit_report_due_days" type="number" defaultValue={fund.audit_report_due_days} className="mt-1" />
-            </div>
-            <div>
-              <Label htmlFor="exchange_rate_jmd_usd">Exchange rate (JMD/USD)</Label>
-              <Input id="exchange_rate_jmd_usd" name="exchange_rate_jmd_usd" type="number" step="0.01" defaultValue={String(fund.exchange_rate_jmd_usd ?? 157)} className="mt-1" />
-            </div>
-          </div>
-          <div className="space-y-2 text-sm">
-            <label className="flex items-center gap-2">
-              <input name="requires_quarterly_financial" type="checkbox" defaultChecked={fund.requires_quarterly_financial} />
-              Quarterly Financial
-            </label>
-            <label className="flex items-center gap-2">
-              <input name="requires_quarterly_inv_mgmt" type="checkbox" defaultChecked={fund.requires_quarterly_inv_mgmt} />
-              Quarterly Investment Management
-            </label>
-            <label className="flex items-center gap-2">
-              <input name="requires_audited_annual" type="checkbox" defaultChecked={fund.requires_audited_annual} />
-              Audited Annual
-            </label>
-            <label className="flex items-center gap-2">
-              <input name="requires_inhouse_quarterly" type="checkbox" defaultChecked={fund.requires_inhouse_quarterly} />
-              In-house Quarterly
-            </label>
-          </div>
-          <div>
-            <Label htmlFor="contacts_json">Contacts (JSON array)</Label>
-            <textarea
-              id="contacts_json"
-              name="contacts_json"
-              rows={3}
-              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs"
-              defaultValue={JSON.stringify(fund.contacts ?? [], null, 2)}
-            />
-          </div>
-          <div>
-            <Label htmlFor="notes">Notes</Label>
-            <textarea id="notes" name="notes" rows={3} className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" defaultValue={fund.notes ?? ''} />
-          </div>
-          <Button type="submit" disabled={busy} className="bg-[#0B1F45] hover:bg-[#162d5e]">
-            {busy ? 'Saving…' : 'Save Settings'}
-          </Button>
-        </form>
-        <div className="max-w-2xl">
-          <FundPctuProfileEditor
-            fundId={fund.id}
-            pctuProfileRaw={(fund.pctu_profile ?? null) as Json | null}
-            resetKey={fund.updated_at}
-            onSaved={() => void refetchFund()}
-          />
-        </div>
-        </>
+        <FundSettingsShell
+          fund={fund}
+          saveSettings={saveSettings}
+          busy={busy}
+          pctuProfileRaw={(fund.pctu_profile ?? null) as Json | null}
+          onPctuSaved={() => void refetchFund()}
+        />
       ) : null}
 
       {tab === 'settings' && !canWrite ? <p className="text-sm text-gray-500">You do not have permission to edit fund settings.</p> : null}

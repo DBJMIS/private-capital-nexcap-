@@ -6,6 +6,9 @@ import { can } from '@/lib/auth/permissions';
 
 export const dynamic = 'force-dynamic';
 
+const ACTION_SELECT =
+  'id, tenant_id, obligation_id, fund_id, action_type, actor_id, actor_name, from_status, to_status, notes, recipient, created_at';
+
 export async function GET(req: Request) {
   await requireAuth();
   const profile = await getProfile();
@@ -17,7 +20,7 @@ export async function GET(req: Request) {
   const fundFilter = searchParams.get('fund_id');
 
   const supabase = createServerClient();
-  let builder = supabase.from('vc_compliance_actions').select('*').eq('tenant_id', profile.tenant_id);
+  let builder = supabase.from('vc_compliance_actions').select(ACTION_SELECT).eq('tenant_id', profile.tenant_id);
   if (fundFilter) {
     builder = builder.eq('fund_id', fundFilter);
   }
@@ -30,30 +33,33 @@ export async function GET(req: Request) {
   const obligationIds = [...new Set(list.map((a) => (a as { obligation_id: string }).obligation_id))];
   const fundIds = [...new Set(list.map((a) => (a as { fund_id: string }).fund_id))];
 
-  let obMap = new Map<string, { period_label: string; report_type: string }>();
-  if (obligationIds.length > 0) {
-    const { data: obs } = await supabase
-      .from('vc_reporting_obligations')
-      .select('id, period_label, report_type')
-      .eq('tenant_id', profile.tenant_id)
-      .in('id', obligationIds);
-    for (const o of obs ?? []) {
-      const row = o as { id: string; period_label: string; report_type: string };
-      obMap.set(row.id, { period_label: row.period_label, report_type: row.report_type });
-    }
+  const [obsRes, fundsRes] = await Promise.all([
+    obligationIds.length > 0
+      ? supabase
+          .from('vc_reporting_obligations')
+          .select('id, period_label, report_type')
+          .eq('tenant_id', profile.tenant_id)
+          .in('id', obligationIds)
+      : Promise.resolve({ data: [] as { id: string; period_label: string; report_type: string }[] }),
+    fundIds.length > 0
+      ? supabase
+          .from('vc_portfolio_funds')
+          .select('id, fund_name, currency')
+          .eq('tenant_id', profile.tenant_id)
+          .in('id', fundIds)
+      : Promise.resolve({ data: [] as { id: string; fund_name: string; currency: string }[] }),
+  ]);
+
+  const obMap = new Map<string, { period_label: string; report_type: string }>();
+  for (const o of obsRes.data ?? []) {
+    const row = o as { id: string; period_label: string; report_type: string };
+    obMap.set(row.id, { period_label: row.period_label, report_type: row.report_type });
   }
 
-  let fundMap = new Map<string, { fund_name: string; currency: string }>();
-  if (fundIds.length > 0) {
-    const { data: funds } = await supabase
-      .from('vc_portfolio_funds')
-      .select('id, fund_name, currency')
-      .eq('tenant_id', profile.tenant_id)
-      .in('id', fundIds);
-    for (const f of funds ?? []) {
-      const row = f as { id: string; fund_name: string; currency: string };
-      fundMap.set(row.id, { fund_name: row.fund_name, currency: row.currency });
-    }
+  const fundMap = new Map<string, { fund_name: string; currency: string }>();
+  for (const f of fundsRes.data ?? []) {
+    const row = f as { id: string; fund_name: string; currency: string };
+    fundMap.set(row.id, { fund_name: row.fund_name, currency: row.currency });
   }
 
   const enriched = list.map((a) => {

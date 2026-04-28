@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-export const COMPLIANCE_FUNDS_NESTED_SELECT = `
+export const COMPLIANCE_FUND_BASE_SELECT = `
     id,
     fund_name,
     manager_name,
@@ -16,8 +16,10 @@ export const COMPLIANCE_FUNDS_NESTED_SELECT = `
     hurdle_rate_pct,
     target_irr_pct,
     sector_focus,
-    impact_objectives,
-    vc_reporting_obligations (
+    impact_objectives
+  `;
+
+export const COMPLIANCE_OBLIGATION_DETAIL_SELECT = `
       id,
       status,
       report_type,
@@ -31,6 +33,13 @@ export const COMPLIANCE_FUNDS_NESTED_SELECT = `
       escalated_at,
       escalated_to,
       escalation_level
+    `;
+
+/** @deprecated Prefer COMPLIANCE_FUND_BASE_SELECT + obligation merge + RPC for summary rows. */
+export const COMPLIANCE_FUNDS_NESTED_SELECT = `
+    ${COMPLIANCE_FUND_BASE_SELECT.trim()},
+    vc_reporting_obligations (
+      ${COMPLIANCE_OBLIGATION_DETAIL_SELECT.trim().replace(/\s+/g, ' ')}
     )
   `;
 
@@ -121,6 +130,42 @@ export function deriveComplianceStatus(obligations: ComplianceObligationStatusSl
   return 'partially_compliant';
 }
 
+type RpcComplianceSummaryRow = {
+  fund_id: string;
+  fund_name: string;
+  manager_name: string;
+  currency: string;
+  listed: boolean;
+  dbj_commitment: string | number | null;
+  fund_category: string | null;
+  fund_status: string;
+  total_obligations: string | number | null;
+  submitted: string | number | null;
+  accepted: string | number | null;
+  outstanding: string | number | null;
+  overdue: string | number | null;
+  audits_outstanding: string | number | null;
+  compliance_status: string;
+};
+
+function mapRpcToComplianceSummaryRows(data: RpcComplianceSummaryRow[] | null): ComplianceSummaryRow[] {
+  return (data ?? []).map((r) => ({
+    fund_id: r.fund_id,
+    fund_name: r.fund_name,
+    manager_name: r.manager_name ?? '',
+    currency: r.currency,
+    listed: Boolean(r.listed),
+    dbj_commitment: Number(r.dbj_commitment ?? 0),
+    total_obligations: Number(r.total_obligations ?? 0),
+    submitted: Number(r.submitted ?? 0),
+    accepted: Number(r.accepted ?? 0),
+    outstanding: Number(r.outstanding ?? 0),
+    overdue: Number(r.overdue ?? 0),
+    audits_outstanding: Number(r.audits_outstanding ?? 0),
+    compliance_status: r.compliance_status,
+  }));
+}
+
 export function mapNestedFundsToComplianceRows(funds: unknown[] | null): ComplianceSummaryRow[] {
   const today = todayIsoDate();
 
@@ -158,20 +203,74 @@ export function mapNestedFundsToComplianceRows(funds: unknown[] | null): Complia
   });
 }
 
-export async function loadComplianceFundRows(
+const COMPLIANCE_OBLIGATION_SELECT =
+  'fund_id, id, status, report_type, due_date, period_label, period_year, period_month, days_overdue, reminder_sent_at, reminder_sent_to, escalated_at, escalated_to, escalation_level';
+
+async function loadFundsWithObligationDetails(
   supabase: SupabaseClient,
   tenantId: string,
-): Promise<{ funds: unknown[] | null; rows: ComplianceSummaryRow[]; error: string | null }> {
-  const { data: funds, error } = await supabase
+): Promise<{ funds: NestedFund[] | null; error: string | null }> {
+  const { data: fundRows, error: fErr } = await supabase
     .from('vc_portfolio_funds')
-    .select(COMPLIANCE_FUNDS_NESTED_SELECT)
+    .select(COMPLIANCE_FUND_BASE_SELECT)
     .eq('tenant_id', tenantId)
     .eq('fund_status', 'active')
     .order('fund_name');
 
-  if (error) {
-    return { funds: null, rows: [], error: error.message };
+  if (fErr) {
+    return { funds: null, error: fErr.message };
+  }
+  if (!fundRows?.length) {
+    return { funds: [], error: null };
   }
 
-  return { funds, rows: mapNestedFundsToComplianceRows(funds), error: null };
+  const ids = (fundRows as { id: string }[]).map((f) => f.id);
+  const { data: obRows, error: oErr } = await supabase
+    .from('vc_reporting_obligations')
+    .select(COMPLIANCE_OBLIGATION_SELECT)
+    .eq('tenant_id', tenantId)
+    .in('fund_id', ids);
+
+  if (oErr) {
+    return { funds: null, error: oErr.message };
+  }
+
+  const byFund = new Map<string, NestedObligation[]>();
+  for (const raw of obRows ?? []) {
+    const o = raw as NestedObligation & { fund_id: string };
+    const fid = o.fund_id;
+    const { fund_id: _fid, ...rest } = o;
+    const list = byFund.get(fid) ?? [];
+    list.push(rest as NestedObligation);
+    byFund.set(fid, list);
+  }
+
+  const funds: NestedFund[] = (fundRows as NestedFund[]).map((f) => ({
+    ...f,
+    vc_reporting_obligations: byFund.get(f.id) ?? [],
+  }));
+
+  return { funds, error: null };
+}
+
+export async function loadComplianceFundRows(
+  supabase: SupabaseClient,
+  tenantId: string,
+): Promise<{ funds: unknown[] | null; rows: ComplianceSummaryRow[]; error: string | null }> {
+  const { data: rpcData, error: rpcErr } = await supabase.rpc('get_compliance_summary', {
+    p_tenant_id: tenantId,
+  });
+
+  if (rpcErr) {
+    return { funds: null, rows: [], error: rpcErr.message };
+  }
+
+  const rows = mapRpcToComplianceSummaryRows((rpcData ?? []) as RpcComplianceSummaryRow[]);
+
+  const { funds, error: mergeErr } = await loadFundsWithObligationDetails(supabase, tenantId);
+  if (mergeErr) {
+    return { funds: null, rows, error: mergeErr };
+  }
+
+  return { funds: funds as unknown[], rows, error: null };
 }

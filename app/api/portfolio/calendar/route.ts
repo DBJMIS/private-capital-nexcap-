@@ -40,7 +40,8 @@ export async function GET(req: Request) {
     q = q.eq('fund_id', fundId);
   }
 
-  const { data, error } = await q;
+  /** Cap very wide date windows so a single request cannot scan unbounded rows. */
+  const { data, error } = await q.limit(2500);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
