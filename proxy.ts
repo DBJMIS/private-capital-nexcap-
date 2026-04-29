@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 
 import { cacheUserRoleOnHeaders, getUserRole } from '@/lib/auth/get-user-role';
 import { getRolePermissions } from '@/lib/auth/get-role-permissions';
+import { rootLandingRedirectTarget } from '@/lib/auth/role-root-landing';
 import { isAdminRole, pathnameAllowedForRole, VC_PATHNAME_HEADER } from '@/lib/auth/rbac';
 
 function isInviteLandingPath(pathname: string) {
@@ -91,6 +92,13 @@ export async function proxy(req: NextRequest) {
     return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
+  if (pathname === '/' || pathname === '/dashboard') {
+    const landing = rootLandingRedirectTarget(effective);
+    if (landing && pathname !== landing) {
+      return NextResponse.redirect(new URL(landing, req.url));
+    }
+  }
+
   const allowedRoutes = await getRolePermissions(supabase, effective, tenantId);
   const allowedByPermissions =
     allowedRoutes.includes('*') ||
@@ -98,13 +106,6 @@ export async function proxy(req: NextRequest) {
 
   if (!allowedByPermissions && !pathnameAllowedForRole(pathname, effective)) {
     return NextResponse.redirect(new URL('/unauthorized', req.url));
-  }
-
-  if (effective === 'panel_member' && (pathname === '/dashboard' || pathname === '/')) {
-    return NextResponse.redirect(new URL('/assessments', req.url));
-  }
-  if (effective === 'senior_management' && (pathname === '/dashboard' || pathname === '/')) {
-    return NextResponse.redirect(new URL('/portfolio/executive', req.url));
   }
 
   return NextResponse.next({ request: { headers: requestHeaders } });
