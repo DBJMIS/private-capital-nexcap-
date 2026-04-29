@@ -78,7 +78,7 @@ export const authOptions: NextAuthOptions = {
       tenantId: process.env.AZURE_AD_TENANT_ID!,
       authorization: {
         params: {
-          scope: 'openid profile email User.Read',
+          scope: 'openid profile email User.Read offline_access',
         },
       },
       /** Ensures `user.email` is set when Microsoft only sends UPN on the token. */
@@ -104,7 +104,10 @@ export const authOptions: NextAuthOptions = {
     signIn: '/login',
   },
   callbacks: {
-    async jwt({ token, user, profile }) {
+    async jwt({ token, user, profile, account }) {
+      if (typeof account?.access_token === 'string' && account.access_token.length > 0) {
+        token.accessToken = account.access_token;
+      }
       const incomingEmail = resolveSignInEmail({ user, profile, token });
       const incomingName =
         (profile && 'name' in profile && typeof profile.name === 'string' && profile.name) ||

@@ -43,6 +43,11 @@ const postSchema = z.object({
 
 type Ctx = { params: Promise<{ id: string }> };
 
+function isValidDateString(value: string): boolean {
+  const dt = new Date(value);
+  return !Number.isNaN(dt.getTime());
+}
+
 function summaryFromCalls(
   calls: VcCapitalCall[],
   items: VcCapitalCallItem[],
@@ -123,115 +128,138 @@ export async function GET(_req: Request, ctx: Ctx) {
 }
 
 export async function POST(req: Request, ctx: Ctx) {
-  await requireAuth();
-  const profile = await getProfile();
-  if (!profile || !can(profile, 'write:applications')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-  const { id: fundId } = await ctx.params;
-
-  let body: z.infer<typeof postSchema>;
   try {
-    body = postSchema.parse(await req.json());
-  } catch (e) {
-    const msg = e instanceof z.ZodError ? e.flatten().fieldErrors : 'Invalid body';
-    return NextResponse.json({ error: 'Validation failed', details: msg }, { status: 400 });
-  }
-
-  for (const it of body.items) {
-    if (it.purpose_category === 'investment' && !String(it.investee_company ?? '').trim()) {
-      return NextResponse.json({ error: 'investee_company required for investment line items' }, { status: 400 });
+    await requireAuth();
+    const profile = await getProfile();
+    if (!profile || !can(profile, 'write:applications')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-  }
+    if (profile.role !== 'admin' && profile.role !== 'pctu_officer') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const { id: fundId } = await ctx.params;
+    if (!z.string().uuid().safeParse(fundId).success) {
+      return NextResponse.json({ error: 'Invalid fund id' }, { status: 400 });
+    }
 
-  const supabase = createServerClient();
-  const { data: fund, error: fErr } = await supabase
-    .from('vc_portfolio_funds')
-    .select('id, currency, dbj_commitment')
-    .eq('tenant_id', profile.tenant_id)
-    .eq('id', fundId)
-    .maybeSingle();
+    let body: z.infer<typeof postSchema>;
+    try {
+      body = postSchema.parse(await req.json());
+    } catch (e) {
+      const msg = e instanceof z.ZodError ? e.flatten().fieldErrors : 'Invalid body';
+      return NextResponse.json({ error: 'Validation failed', details: msg }, { status: 400 });
+    }
+    if (!isValidDateString(body.date_of_notice)) {
+      return NextResponse.json({ error: 'Invalid date_of_notice' }, { status: 400 });
+    }
+    if (body.due_date && !isValidDateString(body.due_date)) {
+      return NextResponse.json({ error: 'Invalid due_date' }, { status: 400 });
+    }
 
-  if (fErr || !fund) {
-    return NextResponse.json({ error: fErr?.message ?? 'Not found' }, { status: fErr ? 500 : 404 });
-  }
+    for (const it of body.items) {
+      if (it.purpose_category === 'investment' && !String(it.investee_company ?? '').trim()) {
+        return NextResponse.json({ error: 'investee_company required for investment line items' }, { status: 400 });
+      }
+    }
 
-  const fundCurrency = fund.currency as string;
-  const call_amount = body.items.reduce((s, it) => s + it.amount, 0);
+    const supabase = createServerClient();
+    const { data: fund, error: fErr } = await supabase
+      .from('vc_portfolio_funds')
+      .select('id, currency, dbj_commitment')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('id', fundId)
+      .maybeSingle();
 
-  const { data: dup } = await supabase
-    .from('vc_capital_calls')
-    .select('id')
-    .eq('tenant_id', profile.tenant_id)
-    .eq('fund_id', fundId)
-    .eq('notice_number', body.notice_number)
-    .maybeSingle();
+    if (fErr) {
+      console.error('[capital-calls:fund]', fErr);
+      return NextResponse.json({ error: 'Failed to load fund' }, { status: 500 });
+    }
+    if (!fund) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
 
-  if (dup) {
-    return NextResponse.json({ error: 'notice_number already exists for this fund' }, { status: 409 });
-  }
+    const fundCurrency = fund.currency as string;
+    const call_amount = body.items.reduce((s, it) => s + it.amount, 0);
 
-  const { data: existingRows } = await supabase
-    .from('vc_capital_calls')
-    .select('notice_number, call_amount')
-    .eq('tenant_id', profile.tenant_id)
-    .eq('fund_id', fundId);
+    const { data: dup } = await supabase
+      .from('vc_capital_calls')
+      .select('id')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('fund_id', fundId)
+      .eq('notice_number', body.notice_number)
+      .maybeSingle();
 
-  const existing = (existingRows ?? []) as Pick<VcCapitalCall, 'notice_number' | 'call_amount'>[];
-  const { total_called_to_date, remaining_commitment } = computeRunningForNotice(
-    existing,
-    body.notice_number,
-    call_amount,
-    num(fund.dbj_commitment),
-  );
+    if (dup) {
+      return NextResponse.json({ error: 'notice_number already exists for this fund' }, { status: 409 });
+    }
 
-  const { data: created, error: insErr } = await supabase
-    .from('vc_capital_calls')
-    .insert({
-      tenant_id: profile.tenant_id,
-      fund_id: fundId,
-      notice_number: body.notice_number,
-      date_of_notice: body.date_of_notice,
-      due_date: body.due_date ?? null,
-      date_paid: null,
+    const { data: existingRows } = await supabase
+      .from('vc_capital_calls')
+      .select('notice_number, call_amount')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('fund_id', fundId);
+
+    const existing = (existingRows ?? []) as Pick<VcCapitalCall, 'notice_number' | 'call_amount'>[];
+    const { total_called_to_date, remaining_commitment } = computeRunningForNotice(
+      existing,
+      body.notice_number,
       call_amount,
-      currency: fundCurrency,
-      total_called_to_date,
-      remaining_commitment,
-      status: 'unpaid',
-      notes: body.notes?.trim() || null,
-      created_by: profile.profile_id,
-    })
-    .select('*')
-    .single();
+      num(fund.dbj_commitment),
+    );
 
-  if (insErr || !created) {
-    return NextResponse.json({ error: insErr?.message ?? 'Insert failed' }, { status: 500 });
-  }
-
-  const call = created as VcCapitalCall;
-  const itemRows: VcCapitalCallItem[] = [];
-  for (const it of body.items) {
-    const { data: row, error: itemErr } = await supabase
-      .from('vc_capital_call_items')
+    const { data: created, error: insErr } = await supabase
+      .from('vc_capital_calls')
       .insert({
         tenant_id: profile.tenant_id,
-        capital_call_id: call.id,
-        purpose_category: it.purpose_category,
-        investee_company: it.investee_company?.trim() || null,
-        description: it.description?.trim() || null,
-        amount: it.amount,
+        fund_id: fundId,
+        notice_number: body.notice_number,
+        date_of_notice: body.date_of_notice,
+        due_date: body.due_date ?? null,
+        date_paid: null,
+        call_amount,
         currency: fundCurrency,
-        sort_order: it.sort_order,
+        total_called_to_date,
+        remaining_commitment,
+        status: 'unpaid',
+        notes: body.notes?.trim() || null,
+        created_by: profile.profile_id,
       })
       .select('*')
       .single();
-    if (itemErr || !row) {
-      await supabase.from('vc_capital_calls').delete().eq('id', call.id).eq('tenant_id', profile.tenant_id);
-      return NextResponse.json({ error: itemErr?.message ?? 'Item insert failed' }, { status: 500 });
-    }
-    itemRows.push(row as VcCapitalCallItem);
-  }
 
-  return NextResponse.json({ call: { ...call, items: itemRows } }, { status: 201 });
+    if (insErr || !created) {
+      console.error('[capital-calls:insert]', insErr);
+      return NextResponse.json({ error: 'Failed to create capital call' }, { status: 500 });
+    }
+
+    const call = created as VcCapitalCall;
+    const itemRows: VcCapitalCallItem[] = [];
+    for (const it of body.items) {
+      const { data: row, error: itemErr } = await supabase
+        .from('vc_capital_call_items')
+        .insert({
+          tenant_id: profile.tenant_id,
+          capital_call_id: call.id,
+          purpose_category: it.purpose_category,
+          investee_company: it.investee_company?.trim() || null,
+          description: it.description?.trim() || null,
+          amount: it.amount,
+          currency: fundCurrency,
+          sort_order: it.sort_order,
+        })
+        .select('*')
+        .single();
+      if (itemErr || !row) {
+        await supabase.from('vc_capital_calls').delete().eq('id', call.id).eq('tenant_id', profile.tenant_id);
+        console.error('[capital-calls:item-insert]', itemErr);
+        return NextResponse.json({ error: 'Failed to create capital call items' }, { status: 500 });
+      }
+      itemRows.push(row as VcCapitalCallItem);
+    }
+
+    return NextResponse.json({ call: { ...call, items: itemRows } }, { status: 201 });
+  } catch (error) {
+    console.error('[capital-calls:post]', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
 }

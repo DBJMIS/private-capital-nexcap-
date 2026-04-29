@@ -102,6 +102,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
       assigned_at: now,
       assigned_by: profile.profile_id,
     })
+    .eq('tenant_id', profile.tenant_id)
     .eq('id', ur.id)
     .select('*')
     .single();

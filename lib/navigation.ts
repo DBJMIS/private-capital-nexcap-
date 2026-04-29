@@ -101,6 +101,7 @@ export const AUTH_NAV_GROUPS: NavGroupDef[] = [
 /** Map pathname prefix → human-readable page title for the top bar */
 export function titleFromPathname(pathname: string): string {
   const map: Record<string, string> = {
+    '/profile': 'My Profile',
     '/dashboard': 'Dashboard',
     '/cfp': 'Calls for Proposals',
     '/fund-applications': 'Fund Applications',

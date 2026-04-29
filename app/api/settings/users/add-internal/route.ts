@@ -141,7 +141,8 @@ export async function POST(req: Request) {
         .single();
 
       if (profileInsertErr || !insertedProfile?.id) {
-        return NextResponse.json({ error: profileInsertErr?.message ?? 'Failed to create user profile' }, { status: 500 });
+        console.error('[add-internal:profile-insert]', profileInsertErr);
+        return NextResponse.json({ error: 'Failed to create user profile' }, { status: 500 });
       }
       profileId = insertedProfile.id;
     } else {
@@ -158,7 +159,8 @@ export async function POST(req: Request) {
         .eq('tenant_id', caller.tenant_id);
 
       if (profileUpdateErr) {
-        return NextResponse.json({ error: profileUpdateErr.message }, { status: 500 });
+        console.error('[add-internal:profile-update]', profileUpdateErr);
+        return NextResponse.json({ error: 'Failed to update user profile' }, { status: 500 });
       }
     }
 
@@ -183,12 +185,14 @@ export async function POST(req: Request) {
         .eq('user_id', authUser.id)
         .maybeSingle();
       if (byUser.error) {
-        return NextResponse.json({ error: byUser.error.message }, { status: 500 });
+        console.error('[add-internal:role-by-user]', byUser.error);
+        return NextResponse.json({ error: 'Failed to load role record' }, { status: 500 });
       }
       existingRoleRow = byUser.data as RoleRowByUser | null;
     } else {
       if (byProfile.error) {
-        return NextResponse.json({ error: byProfile.error.message }, { status: 500 });
+        console.error('[add-internal:role-by-profile]', byProfile.error);
+        return NextResponse.json({ error: 'Failed to load role record' }, { status: 500 });
       }
       existingRoleRow = byProfile.data as RoleRowByProfile | null;
     }
@@ -208,10 +212,12 @@ export async function POST(req: Request) {
           deactivated_at: null,
           deactivated_by: null,
         })
+        .eq('tenant_id', caller.tenant_id)
         .eq('id', existingRoleRow.id);
 
       if (roleUpdateErr) {
-        return NextResponse.json({ error: roleUpdateErr.message }, { status: 500 });
+        console.error('[add-internal:role-update]', roleUpdateErr);
+        return NextResponse.json({ error: 'Failed to update role' }, { status: 500 });
       }
     } else {
       const insertPayloadBase = {
@@ -234,17 +240,20 @@ export async function POST(req: Request) {
             .from('vc_user_roles')
             .insert({ ...insertPayloadBase, user_id: profileId });
           if (fallbackAttempt.error) {
-            return NextResponse.json({ error: fallbackAttempt.error.message }, { status: 500 });
+            console.error('[add-internal:role-insert-fallback]', fallbackAttempt.error);
+            return NextResponse.json({ error: 'Failed to assign role' }, { status: 500 });
           }
         } else if (firstAttempt.error) {
-          return NextResponse.json({ error: firstAttempt.error.message }, { status: 500 });
+          console.error('[add-internal:role-insert-user]', firstAttempt.error);
+          return NextResponse.json({ error: 'Failed to assign role' }, { status: 500 });
         }
       } else {
         const { error: roleInsertErr } = await supabaseAdmin
           .from('vc_user_roles')
           .insert({ ...insertPayloadBase, profile_id: profileId });
         if (roleInsertErr) {
-          return NextResponse.json({ error: roleInsertErr.message }, { status: 500 });
+          console.error('[add-internal:role-insert-profile]', roleInsertErr);
+          return NextResponse.json({ error: 'Failed to assign role' }, { status: 500 });
         }
       }
     }

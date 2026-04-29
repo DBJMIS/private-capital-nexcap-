@@ -10,7 +10,7 @@ import { roleBadgeClass, roleDisplayLabel } from '@/lib/settings/role-visual';
 import { cn } from '@/lib/utils';
 import { dsType } from '@/components/ui/design-system';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { UserAvatar } from '@/components/UserAvatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,15 +29,6 @@ export type TopBarProps = {
   /** Optional override for the main title (e.g. from a nested server page later) */
   titleOverride?: string | null;
 };
-
-function initials(name: string) {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase())
-    .join('');
-}
 
 export function TopBar({ user, titleOverride }: TopBarProps) {
   const pathname = usePathname() ?? '';
@@ -102,9 +93,7 @@ export function TopBar({ user, titleOverride }: TopBarProps) {
                 className="h-10 gap-2 rounded-full px-2 hover:bg-gray-100 md:px-3"
                 aria-label="Account menu"
               >
-                <Avatar className="h-9 w-9">
-                  <AvatarFallback className="bg-[#0B1F45] text-xs text-white">{initials(user.name)}</AvatarFallback>
-                </Avatar>
+                <UserAvatar name={user.name} email={user.email} size="md" className="h-9 w-9" />
                 <span className="hidden max-w-[140px] truncate text-left text-sm font-medium text-gray-900 md:inline">
                   {user.name}
                 </span>
@@ -135,7 +124,7 @@ export function TopBar({ user, titleOverride }: TopBarProps) {
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild className="cursor-pointer">
-                <Link href="/settings">My Profile</Link>
+                <Link href="/profile">My Profile</Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-gray-900 focus:text-gray-900">

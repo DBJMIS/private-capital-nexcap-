@@ -79,7 +79,9 @@ export async function generateAndPersistQuarterlyAiSummary(
 
   const { data: row, error: aErr } = await supabase
     .from('vc_quarterly_assessments')
-    .select('*')
+    .select(
+      'id, tenant_id, fund_id, assessment_period, fund_lifecycle_stage, financial_performance_score, development_impact_score, fund_management_score, compliance_governance_score, portfolio_health_score, weighted_total_score, category, divestment_recommendation, financial_commentary, impact_commentary, management_commentary, compliance_commentary, portfolio_commentary',
+    )
     .eq('tenant_id', ctx.tenantId)
     .eq('fund_id', ctx.fundId)
     .eq('id', ctx.assessmentId)
@@ -98,7 +100,7 @@ export async function generateAndPersistQuarterlyAiSummary(
 
   const { data: snaps } = await supabase
     .from('vc_fund_snapshots')
-    .select('*')
+    .select('id, fund_id, snapshot_date, nav, reported_irr')
     .eq('tenant_id', ctx.tenantId)
     .eq('fund_id', ctx.fundId)
     .order('snapshot_date', { ascending: false });

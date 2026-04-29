@@ -5,7 +5,6 @@ import { getProfile, requireAuth } from '@/lib/auth/session';
 import { can } from '@/lib/auth/permissions';
 import { createServerClient } from '@/lib/supabase/server';
 import { calendarMonthGridRange } from '@/lib/portfolio/calendar-grid-range';
-import { refreshObligationStatuses } from '@/lib/portfolio/reporting-engine';
 
 export const metadata: Metadata = {
   title: 'Reporting Calendar',
@@ -24,7 +23,6 @@ export default async function PortfolioCalendarPage() {
   const submitterName = profile.full_name?.trim() || 'Staff';
 
   const supabase = createServerClient();
-  await refreshObligationStatuses(supabase, profile.tenant_id);
 
   const now = new Date();
   const { from, to } = calendarMonthGridRange(now);

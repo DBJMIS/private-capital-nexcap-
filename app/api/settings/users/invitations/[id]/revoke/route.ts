@@ -31,7 +31,11 @@ export async function PATCH(_req: Request, ctx: Ctx) {
     return NextResponse.json({ error: 'Only pending invitations can be revoked' }, { status: 400 });
   }
 
-  const { error: upErr } = await supabase.from('vc_invitations').update({ status: 'revoked' }).eq('id', id);
+  const { error: upErr } = await supabase
+    .from('vc_invitations')
+    .update({ status: 'revoked' })
+    .eq('tenant_id', profile.tenant_id)
+    .eq('id', id);
 
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
 

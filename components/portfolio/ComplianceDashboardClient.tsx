@@ -136,6 +136,7 @@ export function ComplianceDashboardClient({
   const [tab, setTab] = useState<TabKey>('overview');
   const [rows] = useState(initialRows);
   const [funds] = useState(initialFunds);
+  const [activeFilter, setActiveFilter] = useState<string | null>(null);
 
   const [overdueRows, setOverdueRows] = useState<OverdueApiRow[]>([]);
   const [overdueLoading, setOverdueLoading] = useState(false);
@@ -233,9 +234,17 @@ export function ComplianceDashboardClient({
   const auditsOut = rows.filter((r) => r.compliance_status === 'audits_outstanding');
   const reportsOut = rows.filter((r) => r.compliance_status === 'reports_outstanding');
   const totalOverdue = rows.reduce((a, r) => a + r.overdue, 0);
-  const needsAttention = rows.filter(
-    (r) => r.compliance_status !== 'fully_compliant' && r.compliance_status !== 'no_data',
-  );
+
+  const displayedRows = useMemo(() => {
+    if (!activeFilter) return rows;
+    return rows.filter((r) => {
+      if (activeFilter === 'fully_compliant') return r.compliance_status === 'fully_compliant';
+      if (activeFilter === 'audits_outstanding') return r.compliance_status === 'audits_outstanding';
+      if (activeFilter === 'reports_outstanding') return r.compliance_status === 'reports_outstanding';
+      if (activeFilter === 'has_overdue') return (r.overdue ?? 0) > 0;
+      return true;
+    });
+  }, [rows, activeFilter]);
 
   const fundById = useMemo(() => new Map(funds.map((f) => [f.id, f])), [funds]);
 
@@ -402,7 +411,17 @@ DBJ Private Capital Team`;
       {tab === 'overview' ? (
         <>
           <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="relative w-full overflow-hidden rounded-xl border border-gray-200 bg-teal-50/30 p-5 pt-6 shadow-sm">
+            <button
+              type="button"
+              onClick={() =>
+                setActiveFilter((f) => (f === 'fully_compliant' ? null : 'fully_compliant'))
+              }
+              className={cn(
+                'relative w-full overflow-hidden rounded-xl border border-gray-200 bg-teal-50/30 p-5 pt-6 text-left shadow-sm',
+                'cursor-pointer select-none transition-all duration-150',
+                activeFilter === 'fully_compliant' && 'ring-2 ring-offset-2 ring-teal-500',
+              )}
+            >
               <div className="absolute left-0 right-0 top-0 h-1 bg-teal-500" />
               <div className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-teal-500/15">
                 <CheckCircle2 className="h-4 w-4 text-teal-600/80" aria-hidden />
@@ -410,8 +429,18 @@ DBJ Private Capital Team`;
               <p className="text-3xl font-bold text-[#0B1F45]">{fully.length}</p>
               <p className="mt-1 text-sm text-gray-500">Fully Compliant</p>
               <p className="mt-2 text-xs text-gray-400">Funds meeting obligations</p>
-            </div>
-            <div className="relative w-full overflow-hidden rounded-xl border border-gray-200 bg-amber-50/30 p-5 pt-6 shadow-sm">
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setActiveFilter((f) => (f === 'audits_outstanding' ? null : 'audits_outstanding'))
+              }
+              className={cn(
+                'relative w-full overflow-hidden rounded-xl border border-gray-200 bg-amber-50/30 p-5 pt-6 text-left shadow-sm',
+                'cursor-pointer select-none transition-all duration-150',
+                activeFilter === 'audits_outstanding' && 'ring-2 ring-offset-2 ring-amber-500',
+              )}
+            >
               <div className="absolute left-0 right-0 top-0 h-1 bg-amber-500" />
               <div className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-amber-500/15">
                 <AlertTriangle className="h-4 w-4 text-amber-700/80" aria-hidden />
@@ -419,8 +448,18 @@ DBJ Private Capital Team`;
               <p className="text-3xl font-bold text-[#0B1F45]">{auditsOut.length}</p>
               <p className="mt-1 text-sm text-gray-500">Audits Outstanding</p>
               <p className="mt-2 text-xs text-gray-400">Annual audit filings</p>
-            </div>
-            <div className="relative w-full overflow-hidden rounded-xl border border-gray-200 bg-orange-50/30 p-5 pt-6 shadow-sm">
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setActiveFilter((f) => (f === 'reports_outstanding' ? null : 'reports_outstanding'))
+              }
+              className={cn(
+                'relative w-full overflow-hidden rounded-xl border border-gray-200 bg-orange-50/30 p-5 pt-6 text-left shadow-sm',
+                'cursor-pointer select-none transition-all duration-150',
+                activeFilter === 'reports_outstanding' && 'ring-2 ring-offset-2 ring-amber-400',
+              )}
+            >
               <div className="absolute left-0 right-0 top-0 h-1 bg-orange-500" />
               <div className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-orange-500/15">
                 <FileX className="h-4 w-4 text-orange-700/80" aria-hidden />
@@ -428,8 +467,16 @@ DBJ Private Capital Team`;
               <p className="text-3xl font-bold text-[#0B1F45]">{reportsOut.length}</p>
               <p className="mt-1 text-sm text-gray-500">Reports Outstanding</p>
               <p className="mt-2 text-xs text-gray-400">Non-audit items</p>
-            </div>
-            <div className="relative w-full overflow-hidden rounded-xl border border-gray-200 bg-red-50/30 p-5 pt-6 shadow-sm">
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveFilter((f) => (f === 'has_overdue' ? null : 'has_overdue'))}
+              className={cn(
+                'relative w-full overflow-hidden rounded-xl border border-gray-200 bg-red-50/30 p-5 pt-6 text-left shadow-sm',
+                'cursor-pointer select-none transition-all duration-150',
+                activeFilter === 'has_overdue' && 'ring-2 ring-offset-2 ring-red-500',
+              )}
+            >
               <div className="absolute left-0 right-0 top-0 h-1 bg-red-500" />
               <div className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-red-500/15">
                 <AlertCircle className="h-4 w-4 text-red-600/80" aria-hidden />
@@ -437,10 +484,22 @@ DBJ Private Capital Team`;
               <p className="text-3xl font-bold text-[#0B1F45]">{totalOverdue}</p>
               <p className="mt-1 text-sm text-gray-500">Total Overdue</p>
               <p className="mt-2 text-xs text-gray-400">Obligations past due</p>
-            </div>
+            </button>
           </div>
 
           <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+            <div className="flex flex-wrap items-baseline gap-2 border-b border-gray-200 px-5 py-4">
+              <h2 className="text-lg font-semibold text-[#0B1F45]">Compliance Overview</h2>
+              {activeFilter ? (
+                <button
+                  type="button"
+                  onClick={() => setActiveFilter(null)}
+                  className="text-xs text-gray-400 hover:text-[#0B1F45] underline underline-offset-2 ml-2 transition-colors"
+                >
+                  Clear filter
+                </button>
+              ) : null}
+            </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="border-b border-gray-200 bg-white text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -463,8 +522,21 @@ DBJ Private Capital Team`;
                         No active funds.
                       </td>
                     </tr>
+                  ) : displayedRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="py-12 text-center">
+                        <div className="text-sm text-gray-400">No funds match this filter</div>
+                        <button
+                          type="button"
+                          onClick={() => setActiveFilter(null)}
+                          className="mt-2 text-xs text-[#0B1F45] underline underline-offset-2"
+                        >
+                          Clear filter
+                        </button>
+                      </td>
+                    </tr>
                   ) : (
-                    rows.map((r) => {
+                    displayedRows.map((r) => {
                       const badge = COMPLIANCE_BADGE[r.compliance_status] ?? COMPLIANCE_BADGE.no_data;
                       const iconsDisabled = r.outstanding === 0;
                       return (
@@ -551,42 +623,6 @@ DBJ Private Capital Team`;
                   )}
                 </tbody>
               </table>
-            </div>
-          </div>
-
-          <div className="grid w-full grid-cols-1 gap-4 lg:grid-cols-3">
-            <div className="rounded-xl border border-teal-100 bg-teal-50 p-5">
-              <p className="text-sm font-semibold text-teal-800">Fully Compliant</p>
-              <p className="mt-2 text-4xl font-bold text-teal-700">{fully.length}</p>
-              <ul className="mt-4 max-h-48 space-y-1 overflow-y-auto text-sm text-teal-700">
-                {fully.map((r) => (
-                  <li key={r.fund_id}>
-                    <Link href={`/portfolio/funds/${r.fund_id}`} className="hover:underline">
-                      {r.fund_name}
-                    </Link>
-                  </li>
-                ))}
-                {fully.length === 0 ? <li className="text-teal-600/70">None</li> : null}
-              </ul>
-            </div>
-            <div className="rounded-xl border border-amber-100 bg-amber-50 p-5">
-              <p className="text-sm font-semibold text-amber-900">Needs Attention</p>
-              <p className="mt-2 text-4xl font-bold text-amber-700">{needsAttention.length}</p>
-              <ul className="mt-4 max-h-48 space-y-1 overflow-y-auto text-sm text-amber-800">
-                {needsAttention.map((r) => (
-                  <li key={r.fund_id}>
-                    <Link href={`/portfolio/funds/${r.fund_id}`} className="hover:underline">
-                      {r.fund_name}
-                    </Link>
-                  </li>
-                ))}
-                {needsAttention.length === 0 ? <li className="text-amber-700/70">None</li> : null}
-              </ul>
-            </div>
-            <div className="rounded-xl border border-red-100 bg-red-50 p-5">
-              <p className="text-sm font-semibold text-red-900">Total Overdue Items</p>
-              <p className="mt-2 text-4xl font-bold text-red-700">{totalOverdue}</p>
-              <p className="mt-4 text-sm text-red-500">Reporting obligations past due date</p>
             </div>
           </div>
         </>

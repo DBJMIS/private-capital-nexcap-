@@ -39,6 +39,18 @@ const actionBodySchema = z.discriminatedUnion('action', [
   }),
 ]);
 
+const legacyPatchSchema = z.object({
+  status: z.string().optional(),
+  submitted_date: z.string().nullable().optional(),
+  submitted_by: z.string().nullable().optional(),
+  review_notes: z.string().nullable().optional(),
+  document_path: z.string().nullable().optional(),
+  document_name: z.string().nullable().optional(),
+  document_size_bytes: z.number().nullable().optional(),
+  reviewed_date: z.string().nullable().optional(),
+  decision: z.enum(['accept', 'request_clarification']).optional(),
+});
+
 type LegacyPatchBody = {
   status?: string;
   submitted_date?: string | null;
@@ -56,39 +68,46 @@ function todayDate(): string {
 }
 
 export async function PATCH(req: Request, ctx: Ctx) {
-  await requireAuth();
-  const profile = await getProfile();
-  if (!profile || !can(profile, 'write:applications')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-  const { id } = await ctx.params;
-
-  let raw: unknown;
   try {
-    raw = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
-  }
+    await requireAuth();
+    const profile = await getProfile();
+    if (!profile || !can(profile, 'write:applications')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (profile.role !== 'admin' && profile.role !== 'pctu_officer') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const { id } = await ctx.params;
+    if (!z.string().uuid().safeParse(id).success) {
+      return NextResponse.json({ error: 'Invalid obligation id' }, { status: 400 });
+    }
 
-  const supabase = createServerClient();
-  const { data: row, error: rErr } = await supabase
-    .from('vc_reporting_obligations')
-    .select('*')
-    .eq('tenant_id', profile.tenant_id)
-    .eq('id', id)
-    .maybeSingle();
+    let raw: unknown;
+    try {
+      raw = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+    }
 
-  if (rErr || !row) {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  }
+    const supabase = createServerClient();
+    const { data: row, error: rErr } = await supabase
+      .from('vc_reporting_obligations')
+      .select('*')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('id', id)
+      .maybeSingle();
 
-  const fromStatus = (row as { status: string }).status;
-  const fundId = (row as { fund_id: string }).fund_id;
+    if (rErr || !row) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
 
-  const actorName = profile.full_name?.trim() || profile.name?.trim() || profile.email || 'User';
+    const fromStatus = (row as { status: string }).status;
+    const fundId = (row as { fund_id: string }).fund_id;
 
-  const parsed = actionBodySchema.safeParse(raw);
-  if (parsed.success) {
+    const actorName = profile.full_name?.trim() || profile.name?.trim() || profile.email || 'User';
+
+    const parsed = actionBodySchema.safeParse(raw);
+    if (parsed.success) {
     const body = parsed.data;
     const patch: Record<string, unknown> = {};
     let logType:
@@ -138,6 +157,77 @@ export async function PATCH(req: Request, ctx: Ctx) {
       patch.actioned_at = new Date().toISOString();
     }
 
+      const { data: updated, error } = await supabase
+        .from('vc_reporting_obligations')
+        .update(patch)
+        .eq('tenant_id', profile.tenant_id)
+        .eq('id', id)
+        .select('*')
+        .single();
+
+      if (error || !updated) {
+        console.error('[obligations:action-update]', error);
+        return NextResponse.json({ error: 'Failed to update obligation' }, { status: 500 });
+      }
+
+      const toStatus = (updated as { status: string }).status;
+      let actionRow: { id: string } | null = null;
+      if (logType) {
+        actionRow = await logComplianceAction(supabase, {
+          tenantId: profile.tenant_id,
+          obligationId: id,
+          fundId,
+          actionType: logType,
+          actorId: profile.profile_id,
+          actorName,
+          fromStatus,
+          toStatus: logType === 'note_added' ? fromStatus : toStatus,
+          notes: logNotes,
+          recipient: logRecipient,
+        });
+      }
+
+      const { data: action } = actionRow?.id
+        ? await supabase
+            .from('vc_compliance_actions')
+            .select('*')
+            .eq('tenant_id', profile.tenant_id)
+            .eq('id', actionRow.id)
+            .single()
+        : { data: null };
+
+      return NextResponse.json({ obligation: updated, action: action ?? null });
+    }
+
+    const legacyParsed = legacyPatchSchema.safeParse(raw);
+    if (!legacyParsed.success) {
+      return NextResponse.json({ error: 'Validation failed' }, { status: 400 });
+    }
+    const body = legacyParsed.data as LegacyPatchBody;
+    const patch: Record<string, unknown> = {};
+
+    if (body.submitted_date !== undefined) patch.submitted_date = body.submitted_date;
+    if (body.submitted_by !== undefined) patch.submitted_by = body.submitted_by;
+    if (body.review_notes !== undefined) patch.review_notes = body.review_notes;
+    if (body.document_path !== undefined) patch.document_path = body.document_path;
+    if (body.document_name !== undefined) patch.document_name = body.document_name;
+    if (body.document_size_bytes !== undefined) patch.document_size_bytes = body.document_size_bytes;
+    if (body.reviewed_date !== undefined) patch.reviewed_date = body.reviewed_date;
+
+    if (body.status !== undefined) {
+      patch.status = body.status;
+    }
+
+    if (body.decision === 'accept') {
+      patch.status = 'accepted';
+      patch.reviewed_by = profile.profile_id;
+      patch.reviewed_date = todayDate();
+    } else if (body.decision === 'request_clarification') {
+      patch.status = 'outstanding';
+      patch.reviewed_by = profile.profile_id;
+      patch.reviewed_date = todayDate();
+    }
+
     const { data: updated, error } = await supabase
       .from('vc_reporting_obligations')
       .update(patch)
@@ -147,73 +237,13 @@ export async function PATCH(req: Request, ctx: Ctx) {
       .single();
 
     if (error || !updated) {
-      return NextResponse.json({ error: error?.message ?? 'Update failed' }, { status: 500 });
+      console.error('[obligations:legacy-update]', error);
+      return NextResponse.json({ error: 'Failed to update obligation' }, { status: 500 });
     }
 
     const toStatus = (updated as { status: string }).status;
-    let actionRow: { id: string } | null = null;
-    if (logType) {
-      actionRow = await logComplianceAction(supabase, {
-        tenantId: profile.tenant_id,
-        obligationId: id,
-        fundId,
-        actionType: logType,
-        actorId: profile.profile_id,
-        actorName,
-        fromStatus,
-        toStatus: logType === 'note_added' ? fromStatus : toStatus,
-        notes: logNotes,
-        recipient: logRecipient,
-      });
-    }
-
-    const { data: action } = actionRow?.id
-      ? await supabase.from('vc_compliance_actions').select('*').eq('id', actionRow.id).single()
-      : { data: null };
-
-    return NextResponse.json({ obligation: updated, action: action ?? null });
-  }
-
-  const body = raw as LegacyPatchBody;
-  const patch: Record<string, unknown> = {};
-
-  if (body.submitted_date !== undefined) patch.submitted_date = body.submitted_date;
-  if (body.submitted_by !== undefined) patch.submitted_by = body.submitted_by;
-  if (body.review_notes !== undefined) patch.review_notes = body.review_notes;
-  if (body.document_path !== undefined) patch.document_path = body.document_path;
-  if (body.document_name !== undefined) patch.document_name = body.document_name;
-  if (body.document_size_bytes !== undefined) patch.document_size_bytes = body.document_size_bytes;
-  if (body.reviewed_date !== undefined) patch.reviewed_date = body.reviewed_date;
-
-  if (body.status !== undefined) {
-    patch.status = body.status;
-  }
-
-  if (body.decision === 'accept') {
-    patch.status = 'accepted';
-    patch.reviewed_by = profile.profile_id;
-    patch.reviewed_date = todayDate();
-  } else if (body.decision === 'request_clarification') {
-    patch.status = 'outstanding';
-    patch.reviewed_by = profile.profile_id;
-    patch.reviewed_date = todayDate();
-  }
-
-  const { data: updated, error } = await supabase
-    .from('vc_reporting_obligations')
-    .update(patch)
-    .eq('tenant_id', profile.tenant_id)
-    .eq('id', id)
-    .select('*')
-    .single();
-
-  if (error || !updated) {
-    return NextResponse.json({ error: error?.message ?? 'Update failed' }, { status: 500 });
-  }
-
-  const toStatus = (updated as { status: string }).status;
-  let action: unknown = null;
-  if (body.decision === 'accept') {
+    let action: unknown = null;
+    if (body.decision === 'accept') {
     await logComplianceAction(supabase, {
       tenantId: profile.tenant_id,
       obligationId: id,
@@ -229,12 +259,13 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const { data: last } = await supabase
       .from('vc_compliance_actions')
       .select('*')
+      .eq('tenant_id', profile.tenant_id)
       .eq('obligation_id', id)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
     action = last;
-  } else if (body.decision === 'request_clarification') {
+    } else if (body.decision === 'request_clarification') {
     await logComplianceAction(supabase, {
       tenantId: profile.tenant_id,
       obligationId: id,
@@ -250,12 +281,13 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const { data: last } = await supabase
       .from('vc_compliance_actions')
       .select('*')
+      .eq('tenant_id', profile.tenant_id)
       .eq('obligation_id', id)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
     action = last;
-  } else if (body.status === 'submitted' && toStatus === 'submitted' && fromStatus !== 'submitted') {
+    } else if (body.status === 'submitted' && toStatus === 'submitted' && fromStatus !== 'submitted') {
     await logComplianceAction(supabase, {
       tenantId: profile.tenant_id,
       obligationId: id,
@@ -271,12 +303,13 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const { data: last } = await supabase
       .from('vc_compliance_actions')
       .select('*')
+      .eq('tenant_id', profile.tenant_id)
       .eq('obligation_id', id)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
     action = last;
-  } else if (body.status !== undefined && toStatus !== fromStatus) {
+    } else if (body.status !== undefined && toStatus !== fromStatus) {
     await logComplianceAction(supabase, {
       tenantId: profile.tenant_id,
       obligationId: id,
@@ -292,6 +325,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const { data: last } = await supabase
       .from('vc_compliance_actions')
       .select('*')
+      .eq('tenant_id', profile.tenant_id)
       .eq('obligation_id', id)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -299,6 +333,10 @@ export async function PATCH(req: Request, ctx: Ctx) {
     action = last;
   }
 
-  return NextResponse.json({ obligation: updated, action });
+    return NextResponse.json({ obligation: updated, action });
+  } catch (error) {
+    console.error('[obligations:patch]', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
 }
 

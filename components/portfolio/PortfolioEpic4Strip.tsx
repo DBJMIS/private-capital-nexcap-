@@ -4,7 +4,6 @@ import { Building2, Calendar, ListChecks, ShieldAlert } from 'lucide-react';
 import { createServerClient } from '@/lib/supabase/server';
 import { getProfile, requireAuth } from '@/lib/auth/session';
 import { can } from '@/lib/auth/permissions';
-import { refreshObligationStatuses } from '@/lib/portfolio/reporting-engine';
 import { cn } from '@/lib/utils';
 
 export async function PortfolioEpic4Strip() {
@@ -15,7 +14,6 @@ export async function PortfolioEpic4Strip() {
   }
 
   const supabase = createServerClient();
-  await refreshObligationStatuses(supabase, profile.tenant_id);
 
   const today = new Date().toISOString().split('T')[0]!;
   const monthStart = `${today.slice(0, 7)}-01`;

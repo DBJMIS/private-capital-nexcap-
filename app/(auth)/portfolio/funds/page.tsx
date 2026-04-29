@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { unstable_cache } from 'next/cache';
 
 import { FundMonitoringClient } from '@/components/portfolio/FundMonitoringClient';
 import { createServerClient } from '@/lib/supabase/server';
@@ -6,7 +7,6 @@ import { getProfile, requireAuth } from '@/lib/auth/session';
 import { can } from '@/lib/auth/permissions';
 import type { ObligationLite } from '@/lib/portfolio/compliance';
 import { deriveComplianceStatus } from '@/lib/portfolio/compliance-fund-rows';
-import { refreshObligationStatuses } from '@/lib/portfolio/reporting-engine';
 import { latestSnapshotByFund, monitorDpiTvpiForFund } from '@/lib/portfolio/fund-performance-metrics';
 import type { PortfolioFundRow, PortfolioFundRowWithMonitorMetrics } from '@/lib/portfolio/types';
 import type { VcCapitalCall, VcDistribution, VcFundSnapshot } from '@/types/database';
@@ -86,6 +86,21 @@ const DISTRIBUTION_MONITORING_SELECT = 'id, fund_id, distribution_date, amount, 
 const SNAPSHOT_MONITORING_SELECT =
   'id, tenant_id, fund_id, period_year, period_quarter, snapshot_date, nav, committed_capital, distributions_in_period, reported_irr, investor_remark, source_obligation_id, created_at, updated_at';
 
+const loadFundMonitoringBase = unstable_cache(
+  async (tenantId: string) => {
+    const supabase = createServerClient();
+    const { data: funds } = await supabase
+      .from('vc_portfolio_funds')
+      .select(FUND_MONITORING_LIST_SELECT)
+      .eq('tenant_id', tenantId)
+      .eq('fund_status', 'active')
+      .order('fund_name', { ascending: true });
+    return funds ?? [];
+  },
+  ['fund-monitoring-base'],
+  { revalidate: 300 },
+);
+
 function toUsd(fund: PortfolioFundRow): number {
   const n = Number(fund.dbj_commitment);
   if (fund.currency === 'JMD') {
@@ -103,14 +118,8 @@ export default async function PortfolioFundsPage() {
   }
 
   const supabase = createServerClient();
-  await refreshObligationStatuses(supabase, profile.tenant_id);
 
-  const { data: funds } = await supabase
-    .from('vc_portfolio_funds')
-    .select(FUND_MONITORING_LIST_SELECT)
-    .eq('tenant_id', profile.tenant_id)
-    .eq('fund_status', 'active')
-    .order('fund_name', { ascending: true });
+  const funds = await loadFundMonitoringBase(profile.tenant_id);
 
   const fundRowsRaw = (funds ?? []) as unknown as PortfolioFundRowWithMonitorMetrics[];
   const ids = fundRowsRaw.map((f) => f.id);

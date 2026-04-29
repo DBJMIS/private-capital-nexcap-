@@ -26,7 +26,9 @@ export default async function DivestmentSummaryPage() {
       .order('fund_name'),
     supabase
       .from('vc_quarterly_assessments')
-      .select('*')
+      .select(
+        'id, fund_id, assessment_period, assessment_date, approved_at, status, investment_stage, financial_performance_score, development_impact_score, dd_outcome_at_commitment, contractual_obligation, divestment_recommendation, weighted_total_score, category, ai_summary, fund_lifecycle_stage, dd_assessment_id',
+      )
       .eq('tenant_id', tenantId)
       .eq('status', 'approved')
       .order('approved_at', { ascending: false }),

@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { unstable_cache } from 'next/cache';
 
 import { UserManagementClient } from '@/components/settings/UserManagementClient';
 import { getProfile, requireAuth } from '@/lib/auth/session';
@@ -8,6 +9,15 @@ import { createServerClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
+const loadUserManagementSnapshotCached = unstable_cache(
+  async (tenantId: string) => {
+    const supabase = createServerClient();
+    return loadUserManagementSnapshot(supabase, tenantId);
+  },
+  ['user-management-snapshot'],
+  { revalidate: 60 },
+);
+
 export default async function UserManagementPage() {
   await requireAuth();
   const profile = await getProfile();
@@ -15,8 +25,6 @@ export default async function UserManagementPage() {
     redirect('/unauthorized');
   }
 
-  const supabase = createServerClient();
-  const initial = await loadUserManagementSnapshot(supabase, profile.tenant_id);
-
+  const initial = await loadUserManagementSnapshotCached(profile.tenant_id);
   return <UserManagementClient initial={initial} currentProfileId={profile.profile_id} />;
 }

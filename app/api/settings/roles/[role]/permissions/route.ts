@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 
 const ACCESS_LEVELS: AccessLevel[] = ['full', 'read_only', 'none'];
 const Body = z.object({
-  permissions: z.record(z.string(), z.string()),
+  permissions: z.record(z.string(), z.enum(['full', 'read_only', 'none'])),
 });
 
 function roleAllowed(role: string) {
@@ -68,45 +68,51 @@ export async function GET(_req: Request, ctx: Ctx) {
 }
 
 export async function PUT(req: Request, ctx: Ctx) {
-  await requireAuth();
-  const profile = await getProfile();
-  if (!profile || !canManageUsers(profile.role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  try {
+    await requireAuth();
+    const profile = await getProfile();
+    if (!profile || profile.role !== 'admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const { role } = await ctx.params;
+    if (!roleAllowed(role)) {
+      return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
+    }
+    if (role === 'admin') {
+      return NextResponse.json({ error: 'Admin permissions are read-only' }, { status: 403 });
+    }
+
+    const parsed = Body.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+    }
+
+    const perms = parsed.data.permissions;
+    const rows = Object.entries(perms)
+      .filter(([moduleId]) => ALL_MODULE_IDS.includes(moduleId))
+      .map(([module_id, access_level]) => ({
+        tenant_id: profile.tenant_id,
+        role,
+        module_id,
+        access_level,
+        updated_at: new Date().toISOString(),
+      }));
+
+    const supabase = createServerClient();
+    const { error } = await supabase
+      .from('vc_role_permissions')
+      .upsert(rows, { onConflict: 'tenant_id,role,module_id', ignoreDuplicates: false });
+
+    if (error) {
+      console.error('[settings-role-permissions:put]', error);
+      return NextResponse.json({ error: 'Failed to update permissions' }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, updated: rows.length });
+  } catch (error) {
+    console.error('[settings-role-permissions:put]', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-
-  const { role } = await ctx.params;
-  if (!roleAllowed(role)) {
-    return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
-  }
-  if (role === 'admin') {
-    return NextResponse.json({ error: 'Admin permissions are read-only' }, { status: 403 });
-  }
-
-  const parsed = Body.safeParse(await req.json().catch(() => ({})));
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  }
-
-  const perms = parsed.data.permissions;
-  const rows = Object.entries(perms)
-    .filter(([moduleId]) => ALL_MODULE_IDS.includes(moduleId))
-    .map(([module_id, access_level]) => ({
-      tenant_id: profile.tenant_id,
-      role,
-      module_id,
-      access_level: ACCESS_LEVELS.includes(access_level as AccessLevel) ? (access_level as AccessLevel) : 'none',
-      updated_at: new Date().toISOString(),
-    }));
-
-  const supabase = createServerClient();
-  const { error } = await supabase
-    .from('vc_role_permissions')
-    .upsert(rows, { onConflict: 'tenant_id,role,module_id', ignoreDuplicates: false });
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ success: true, updated: rows.length });
 }
 

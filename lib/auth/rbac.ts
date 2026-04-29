@@ -61,6 +61,9 @@ export function pathnameAllowedForRole(pathname: string, role: string): boolean 
   if (pathname === '/unauthorized' || pathname.startsWith('/unauthorized/')) {
     return true;
   }
+  if (pathname === '/profile' || pathname.startsWith('/profile/')) {
+    return true;
+  }
 
   const r = canonicalRoleForAccess(role) ?? role;
 

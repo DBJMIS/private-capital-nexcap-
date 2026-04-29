@@ -1,21 +1,25 @@
 import type { Metadata } from 'next';
+import nextDynamic from 'next/dynamic';
 import { AlertCircle, Building2, DollarSign, ShieldCheck } from 'lucide-react';
 
-import {
-  PortfolioDashboardCharts,
-  type PortfolioDashboardChartsProps,
-} from './PortfolioDashboardCharts.client';
+import type { PortfolioDashboardChartsProps } from './PortfolioDashboardCharts.client';
 import { loadComplianceFundRows } from '@/lib/portfolio/compliance-fund-rows';
 import { createServerClient } from '@/lib/supabase/server';
 import { getProfile, requireAuth } from '@/lib/auth/session';
 import { can } from '@/lib/auth/permissions';
-import { refreshObligationStatuses } from '@/lib/portfolio/reporting-engine';
 
 export const metadata: Metadata = {
   title: 'Portfolio Dashboard',
 };
 
 export const dynamic = 'force-dynamic';
+
+const PortfolioDashboardCharts = nextDynamic(
+  () => import('./PortfolioDashboardCharts.client').then((m) => m.PortfolioDashboardCharts),
+  {
+    loading: () => <div className="h-[280px] animate-pulse rounded-xl bg-gray-100" />,
+  },
+);
 
 const COMPLIANCE_COLORS: Record<string, string> = {
   fully_compliant: '#0F8A6E',
@@ -111,7 +115,6 @@ export default async function PortfolioPage() {
   }
 
   const supabase = createServerClient();
-  await refreshObligationStatuses(supabase, profile.tenant_id);
 
   const { funds, rows, error } = await loadComplianceFundRows(supabase, profile.tenant_id);
   const complianceRows = rows;

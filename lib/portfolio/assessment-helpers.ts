@@ -26,7 +26,13 @@ export async function fetchAssessmentConfigRow(
   supabase: Client,
   tenantId: string,
 ): Promise<{ row: VcAssessmentConfig | null; defaults: VcAssessmentConfig }> {
-  const { data } = await supabase.from('vc_assessment_config').select('*').eq('tenant_id', tenantId).maybeSingle();
+  const { data } = await supabase
+    .from('vc_assessment_config')
+    .select(
+      'id, tenant_id, weight_financial_performance, weight_development_impact, weight_fund_management, weight_compliance_governance, weight_portfolio_health, lifecycle_early_financial_adj, lifecycle_early_management_adj, lifecycle_late_financial_adj, lifecycle_late_impact_adj, threshold_strong, threshold_adequate, threshold_watchlist, watchlist_escalation_quarters, created_at, updated_at',
+    )
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
 
   const base = DEFAULT_ASSESSMENT_CONFIG;
   const defaults: VcAssessmentConfig = {

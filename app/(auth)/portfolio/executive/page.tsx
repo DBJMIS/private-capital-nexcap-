@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
+import nextDynamic from 'next/dynamic';
 import type { ReactNode } from 'react';
 import { ArrowDownLeft, Building2, DollarSign, TrendingUp } from 'lucide-react';
 
-import { ExecutiveAllocationPie, ExecutiveCapitalFlowCharts, ExecutiveComplianceDonut } from '@/components/portfolio/ExecutiveViewCharts';
 import { ExecutiveExportPdfButton } from '@/components/portfolio/ExecutiveExportPdfButton';
 import { createServerClient } from '@/lib/supabase/server';
 import { getProfile, requireAuth } from '@/lib/auth/session';
@@ -25,6 +25,19 @@ export const metadata: Metadata = {
 };
 
 export const dynamic = 'force-dynamic';
+
+const ExecutiveAllocationPie = nextDynamic(
+  () => import('@/components/portfolio/ExecutiveViewCharts').then((m) => m.ExecutiveAllocationPie),
+  { loading: () => <div className="h-[280px] animate-pulse rounded-xl bg-gray-100" /> },
+);
+const ExecutiveCapitalFlowCharts = nextDynamic(
+  () => import('@/components/portfolio/ExecutiveViewCharts').then((m) => m.ExecutiveCapitalFlowCharts),
+  { loading: () => <div className="h-[320px] animate-pulse rounded-xl bg-gray-100" /> },
+);
+const ExecutiveComplianceDonut = nextDynamic(
+  () => import('@/components/portfolio/ExecutiveViewCharts').then((m) => m.ExecutiveComplianceDonut),
+  { loading: () => <div className="h-[280px] animate-pulse rounded-xl bg-gray-100" /> },
+);
 
 function fmtDue(ymd: string) {
   const d = new Date(`${ymd}T12:00:00`);

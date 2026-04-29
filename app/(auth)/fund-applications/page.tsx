@@ -91,7 +91,6 @@ export default async function FundApplicationsPage({
   const total = count ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const empty = total === 0;
-
   return (
     <div className="space-y-6">
       <div className="mb-6 flex items-center justify-between">

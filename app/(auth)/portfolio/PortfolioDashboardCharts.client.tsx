@@ -68,7 +68,7 @@ export function PortfolioDashboardCharts(p: PortfolioDashboardChartsProps) {
             {!hasAnyFunds || barData.length === 0 ? (
               <p className="flex h-full items-center justify-center text-sm text-gray-400">No fund data to chart.</p>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={320}>
                 <BarChart
                   data={barData}
                   layout="vertical"
@@ -134,7 +134,7 @@ export function PortfolioDashboardCharts(p: PortfolioDashboardChartsProps) {
               {!hasAnyFunds || pieData.length === 0 ? (
                 <p className="flex h-full items-center justify-center text-sm text-gray-400">No funds.</p>
               ) : (
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height={200}>
                   <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
                     <Pie
                       data={pieData}
@@ -197,7 +197,7 @@ export function PortfolioDashboardCharts(p: PortfolioDashboardChartsProps) {
             {!hasAnyObligations || !obligationHasAny ? (
               <p className="flex h-full items-center justify-center text-sm text-gray-400">No obligation data.</p>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={obligationBars} margin={{ top: 8, right: 8, left: 0, bottom: 48 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                   <XAxis
@@ -235,7 +235,7 @@ export function PortfolioDashboardCharts(p: PortfolioDashboardChartsProps) {
             {!hasAnyObligations || !timelineHasAny ? (
               <p className="flex h-full items-center justify-center text-sm text-gray-400">No upcoming due dates.</p>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={220}>
                 <AreaChart data={timelineMonths} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                   <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="#9ca3af" />

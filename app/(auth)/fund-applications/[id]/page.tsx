@@ -82,43 +82,39 @@ export default async function FundApplicationDetailPage({ params }: { params: Pr
 
   const showPreScreeningLink = row.status !== 'draft';
 
-  const { data: prequalification } = await supabase
-    .from('vc_prequalification')
-    .select('*')
-    .eq('tenant_id', profile.tenant_id)
-    .eq('application_id', row.id)
-    .maybeSingle();
-
-  const { data: presentation } = await supabase
-    .from('vc_presentations')
-    .select('id, status, scheduled_date, actual_date')
-    .eq('tenant_id', profile.tenant_id)
-    .eq('application_id', row.id)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const { data: panelEvaluations } = await supabase
-    .from('vc_panel_evaluations')
-    .select('id, status')
-    .eq('tenant_id', profile.tenant_id)
-    .eq('application_id', row.id);
-
-  const panelSubmittedCount = (panelEvaluations ?? []).filter((e) => (e as { status: string }).status === 'submitted').length;
-
-  const { data: panelMembers } = row.cfp_id
-    ? await supabase
-        .from('vc_panel_members')
-        .select('id')
+  const [{ data: prequalification }, { data: presentation }, { data: panelEvaluations }, { data: panelMembers }, { data: questionnaireRaw }, { data: assessmentRaw }, { data: siteVisitRaw }, { data: contractRaw }, { data: commitmentRaw }] =
+    await Promise.all([
+      supabase
+        .from('vc_prequalification')
+        .select('*')
         .eq('tenant_id', profile.tenant_id)
-        .eq('cfp_id', row.cfp_id)
-        .eq('is_fund_manager', false)
-    : { data: [] as Array<Record<string, unknown>> };
-
-  const { data: questionnaireRaw } = await supabase
-    .from('vc_dd_questionnaires')
-    .select(
-      `
+        .eq('application_id', row.id)
+        .maybeSingle(),
+      supabase
+        .from('vc_presentations')
+        .select('id, status, scheduled_date, actual_date')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('application_id', row.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('vc_panel_evaluations')
+        .select('id, status')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('application_id', row.id),
+      row.cfp_id
+        ? supabase
+            .from('vc_panel_members')
+            .select('id')
+            .eq('tenant_id', profile.tenant_id)
+            .eq('cfp_id', row.cfp_id)
+            .eq('is_fund_manager', false)
+        : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+      supabase
+        .from('vc_dd_questionnaires')
+        .select(
+          `
       id,
       status,
       completed_at,
@@ -129,10 +125,39 @@ export default async function FundApplicationDetailPage({ params }: { params: Pr
         section_order
       )
     `,
-    )
-    .eq('tenant_id', profile.tenant_id)
-    .eq('application_id', row.id)
-    .maybeSingle();
+        )
+        .eq('tenant_id', profile.tenant_id)
+        .eq('application_id', row.id)
+        .maybeSingle(),
+      supabase
+        .from('vc_assessments')
+        .select('id, status, overall_score, passed, recommendation, completed_at')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('application_id', row.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('vc_site_visits')
+        .select('*')
+        .eq('application_id', row.id)
+        .eq('tenant_id', profile.tenant_id)
+        .maybeSingle(),
+      supabase
+        .from('vc_contracts')
+        .select('*')
+        .eq('application_id', row.id)
+        .eq('tenant_id', profile.tenant_id)
+        .maybeSingle(),
+      supabase
+        .from('vc_commitments')
+        .select('*')
+        .eq('application_id', row.id)
+        .eq('tenant_id', profile.tenant_id)
+        .maybeSingle(),
+    ]);
+
+  const panelSubmittedCount = (panelEvaluations ?? []).filter((e) => (e as { status: string }).status === 'submitted').length;
 
   const questionnaire: DdQuestionnaireWorkspace | null = questionnaireRaw
     ? (() => {
@@ -154,15 +179,6 @@ export default async function FundApplicationDetailPage({ params }: { params: Pr
         };
       })()
     : null;
-
-  const { data: assessmentRaw } = await supabase
-    .from('vc_assessments')
-    .select('id, status, overall_score, passed, recommendation, completed_at')
-    .eq('tenant_id', profile.tenant_id)
-    .eq('application_id', row.id)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
 
   const assessment: VcAssessmentSummary | null = assessmentRaw
     ? {
@@ -189,30 +205,9 @@ export default async function FundApplicationDetailPage({ params }: { params: Pr
     }));
   }
 
-  const { data: siteVisitRaw } = await supabase
-    .from('vc_site_visits')
-    .select('*')
-    .eq('application_id', row.id)
-    .eq('tenant_id', profile.tenant_id)
-    .maybeSingle();
-
   const siteVisit = (siteVisitRaw as VcSiteVisit | null) ?? null;
 
-  const { data: contractRaw } = await supabase
-    .from('vc_contracts')
-    .select('*')
-    .eq('application_id', row.id)
-    .eq('tenant_id', profile.tenant_id)
-    .maybeSingle();
-
   const contract = (contractRaw as VcContract | null) ?? null;
-
-  const { data: commitmentRaw } = await supabase
-    .from('vc_commitments')
-    .select('*')
-    .eq('application_id', row.id)
-    .eq('tenant_id', profile.tenant_id)
-    .maybeSingle();
 
   const commitment = (commitmentRaw as VcCommitment | null) ?? null;
 
@@ -236,21 +231,16 @@ export default async function FundApplicationDetailPage({ params }: { params: Pr
     portfolioFundId = (pfByApp as { id: string } | null)?.id ?? null;
   }
 
-  let siteVisitReportSignedUrl: string | null = null;
-  if (siteVisit?.report_file_path) {
-    const { data: signed } = await supabase.storage
-      .from('application-documents')
-      .createSignedUrl(siteVisit.report_file_path, 3600);
-    siteVisitReportSignedUrl = signed?.signedUrl ?? null;
-  }
-
-  let contractFileSignedUrl: string | null = null;
-  if (contract?.contract_file_path) {
-    const { data: signedC } = await supabase.storage
-      .from('application-documents')
-      .createSignedUrl(contract.contract_file_path, 3600);
-    contractFileSignedUrl = signedC?.signedUrl ?? null;
-  }
+  const [siteVisitSigned, contractSigned] = await Promise.all([
+    siteVisit?.report_file_path
+      ? supabase.storage.from('application-documents').createSignedUrl(siteVisit.report_file_path, 3600)
+      : Promise.resolve({ data: null }),
+    contract?.contract_file_path
+      ? supabase.storage.from('application-documents').createSignedUrl(contract.contract_file_path, 3600)
+      : Promise.resolve({ data: null }),
+  ]);
+  const siteVisitReportSignedUrl = siteVisitSigned.data?.signedUrl ?? null;
+  const contractFileSignedUrl = contractSigned.data?.signedUrl ?? null;
 
   return (
     <div className="w-full max-w-none space-y-6">

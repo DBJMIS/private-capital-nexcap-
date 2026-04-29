@@ -49,6 +49,7 @@ export async function PATCH(_req: Request, ctx: Ctx) {
   const { error: upErr } = await supabase
     .from('vc_invitations')
     .update({ token, token_expires_at: expires })
+    .eq('tenant_id', profile.tenant_id)
     .eq('id', row.id);
 
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });

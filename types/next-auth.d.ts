@@ -21,6 +21,7 @@ declare module 'next-auth/jwt' {
     profile_id?: string | null;
     tenant_id?: string | null;
     role?: string | null;
+    accessToken?: string;
     user_id?: string;
     full_name?: string;
     is_active?: boolean;

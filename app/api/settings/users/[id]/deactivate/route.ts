@@ -52,6 +52,7 @@ export async function PATCH(_req: Request, ctx: Ctx) {
         deactivated_at: now,
         deactivated_by: profile.profile_id,
       })
+      .eq('tenant_id', profile.tenant_id)
       .eq('id', ur.id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
