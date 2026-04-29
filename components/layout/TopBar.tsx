@@ -90,21 +90,10 @@ export function TopBar({ user, titleOverride }: TopBarProps) {
               <Button
                 type="button"
                 variant="ghost"
-                className="h-10 gap-2 rounded-full px-2 hover:bg-gray-100 md:px-3"
+                className="h-10 rounded-full px-2 hover:bg-gray-100"
                 aria-label="Account menu"
               >
                 <UserAvatar name={user.name} email={user.email} size="md" className="h-9 w-9" />
-                <span className="hidden max-w-[140px] truncate text-left text-sm font-medium text-gray-900 md:inline">
-                  {user.name}
-                </span>
-                <span
-                  className={cn(
-                    'hidden rounded-full px-2 py-0.5 text-[10px] font-semibold md:inline',
-                    roleBadgeClass(user.role),
-                  )}
-                >
-                  {roleDisplayLabel(user.role)}
-                </span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
