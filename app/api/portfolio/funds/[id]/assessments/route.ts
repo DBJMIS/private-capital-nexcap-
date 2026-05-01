@@ -5,6 +5,8 @@ import { can } from '@/lib/auth/permissions';
 import { fetchAssessmentConfigRow } from '@/lib/portfolio/assessment-helpers';
 import { deriveAssessment } from '@/lib/portfolio/assessment-derivation';
 import { tryGenerateAndPersistQuarterlyAiSummary } from '@/lib/portfolio/assessment-ai-summary';
+import { validateQuarterlyAssessmentSubmitReady } from '@/lib/portfolio/quarterly-assessment-submit-validation';
+import { updateWatchlistAfterApproval } from '@/lib/portfolio/watchlist-service';
 import { createServerClient } from '@/lib/supabase/server';
 import type { PortfolioFundRow } from '@/lib/portfolio/types';
 import type {
@@ -13,6 +15,7 @@ import type {
   VcDistribution,
   VcFundNarrativeExtract,
   VcFundSnapshot,
+  VcQuarterlyAssessment,
   VcReportingObligation,
 } from '@/types/database';
 
@@ -51,7 +54,9 @@ export async function GET(_req: Request, ctx: Ctx) {
 
   const { data: rows, error } = await supabase
     .from('vc_quarterly_assessments')
-    .select('*')
+    .select(
+      'id, fund_id, assessment_period, assessment_date, status, weighted_total_score, category, divestment_recommendation, approved_at, assessed_by, approved_by, created_at',
+    )
     .eq('tenant_id', profile.tenant_id)
     .eq('fund_id', fundId)
     .order('assessment_date', { ascending: false });
@@ -303,6 +308,40 @@ export async function POST(req: Request, ctx: Ctx) {
     .maybeSingle();
   if (fetchErr) {
     console.error('[assessments POST] reload after AI summary', fetchErr);
+  }
+
+  const rowAfterAi = (withSummary ?? created) as VcQuarterlyAssessment;
+  if (validateQuarterlyAssessmentSubmitReady(rowAfterAi) === null && rowAfterAi.status === 'draft') {
+    const { data: finalized, error: finErr } = await supabase
+      .from('vc_quarterly_assessments')
+      .update({
+        status: 'approved',
+        approved_by: profile.profile_id,
+        approved_at: new Date().toISOString(),
+      })
+      .eq('tenant_id', profile.tenant_id)
+      .eq('fund_id', fundId)
+      .eq('id', createdId)
+      .eq('status', 'draft')
+      .select('*')
+      .single();
+
+    if (!finErr && finalized) {
+      const u = finalized as VcQuarterlyAssessment;
+      if (u.status === 'approved' && u.divestment_recommendation) {
+        const wl = await updateWatchlistAfterApproval(supabase, {
+          fundId,
+          tenantId: profile.tenant_id,
+          recommendation: u.divestment_recommendation,
+          assessmentId: u.id,
+          config: cfg,
+        });
+        if (!wl.ok) {
+          return NextResponse.json({ error: wl.error }, { status: 500 });
+        }
+      }
+      return NextResponse.json({ assessment: finalized });
+    }
   }
 
   return NextResponse.json({ assessment: withSummary ?? created });

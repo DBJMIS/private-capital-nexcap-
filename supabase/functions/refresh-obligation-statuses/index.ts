@@ -18,27 +18,27 @@ Deno.serve(async () => {
   for (const tenant of tenants ?? []) {
     const tid = String((tenant as { id: string }).id);
 
-    await supabase
-      .from('vc_reporting_obligations')
-      .update({ status: 'due' })
-      .eq('tenant_id', tid)
-      .eq('status', 'pending')
-      .lte('due_date', in14DaysStr)
-      .gte('due_date', today);
-
-    await supabase
-      .from('vc_reporting_obligations')
-      .update({ status: 'outstanding' })
-      .eq('tenant_id', tid)
-      .in('status', ['pending', 'due'])
-      .lt('due_date', today);
-
-    await supabase
-      .from('vc_reporting_obligations')
-      .update({ status: 'overdue' })
-      .eq('tenant_id', tid)
-      .eq('status', 'outstanding')
-      .lt('due_date', minus30DaysStr);
+    await Promise.all([
+      supabase
+        .from('vc_reporting_obligations')
+        .update({ status: 'due' })
+        .eq('tenant_id', tid)
+        .eq('status', 'pending')
+        .lte('due_date', in14DaysStr)
+        .gte('due_date', today),
+      supabase
+        .from('vc_reporting_obligations')
+        .update({ status: 'outstanding' })
+        .eq('tenant_id', tid)
+        .in('status', ['pending', 'due'])
+        .lt('due_date', today),
+      supabase
+        .from('vc_reporting_obligations')
+        .update({ status: 'overdue' })
+        .eq('tenant_id', tid)
+        .eq('status', 'outstanding')
+        .lt('due_date', minus30DaysStr),
+    ]);
   }
 
   return new Response(JSON.stringify({ ok: true, ran_at: new Date().toISOString() }), {

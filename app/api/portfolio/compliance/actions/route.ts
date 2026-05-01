@@ -19,12 +19,20 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const fundFilter = searchParams.get('fund_id');
 
+  const PAGE_SIZE = Math.min(parseInt(searchParams.get('page_size') ?? '50', 10) || 50, 100);
+  const page = Math.max(parseInt(searchParams.get('page') ?? '1', 10) || 1, 1);
+  const from = (page - 1) * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+
   const supabase = createServerClient();
-  let builder = supabase.from('vc_compliance_actions').select(ACTION_SELECT).eq('tenant_id', profile.tenant_id);
+  let builder = supabase
+    .from('vc_compliance_actions')
+    .select(ACTION_SELECT, { count: 'exact' })
+    .eq('tenant_id', profile.tenant_id);
   if (fundFilter) {
     builder = builder.eq('fund_id', fundFilter);
   }
-  const { data: actions, error } = await builder.order('created_at', { ascending: false }).limit(50);
+  const { data: actions, error, count } = await builder.order('created_at', { ascending: false }).range(from, to);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -75,5 +83,14 @@ export async function GET(req: Request) {
     };
   });
 
-  return NextResponse.json({ actions: enriched });
+  const total = count ?? 0;
+  return NextResponse.json({
+    actions: enriched,
+    pagination: {
+      page,
+      page_size: PAGE_SIZE,
+      total,
+      total_pages: Math.ceil(total / PAGE_SIZE),
+    },
+  });
 }

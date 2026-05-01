@@ -9,6 +9,12 @@ import {
   deriveCategory,
   deriveRecommendation,
 } from '@/lib/portfolio/assessment-scoring';
+import {
+  QUARTERLY_ASSESSMENT_DIMENSION_KEYS as DIMENSIONS,
+  quarterlyAssessmentScoreField as scoreField,
+  readQuarterlyAssessmentScore as readScore,
+  validateQuarterlyAssessmentSubmitReady as validateSubmitted,
+} from '@/lib/portfolio/quarterly-assessment-submit-validation';
 import { updateWatchlistAfterApproval } from '@/lib/portfolio/watchlist-service';
 import { createServerClient } from '@/lib/supabase/server';
 import type { DimensionKey } from '@/lib/portfolio/types';
@@ -17,41 +23,6 @@ import type { VcQuarterlyAssessment } from '@/types/database';
 export const dynamic = 'force-dynamic';
 
 type Ctx = { params: Promise<{ id: string; assessmentId: string }> };
-
-const DIMENSIONS: DimensionKey[] = [
-  'financial_performance',
-  'development_impact',
-  'fund_management',
-  'compliance_governance',
-  'portfolio_health',
-];
-
-function scoreField(k: DimensionKey): keyof VcQuarterlyAssessment {
-  const map: Record<DimensionKey, keyof VcQuarterlyAssessment> = {
-    financial_performance: 'financial_performance_score',
-    development_impact: 'development_impact_score',
-    fund_management: 'fund_management_score',
-    compliance_governance: 'compliance_governance_score',
-    portfolio_health: 'portfolio_health_score',
-  };
-  return map[k];
-}
-
-function readScore(row: VcQuarterlyAssessment, k: DimensionKey): number | null {
-  const v = row[scoreField(k)];
-  if (v == null) return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-function validateSubmitted(row: VcQuarterlyAssessment): string | null {
-  for (const d of DIMENSIONS) {
-    const s = readScore(row, d);
-    if (s == null) return `Missing score: ${d}`;
-  }
-  if (!row.ai_summary?.trim()) return 'AI summary is required before submit.';
-  return null;
-}
 
 type OverrideInput = {
   score: number;
@@ -154,20 +125,16 @@ export async function PUT(req: Request, ctx: Ctx) {
 
   const cur = existing as VcQuarterlyAssessment;
   const next: VcQuarterlyAssessment = { ...cur, ...(body as Partial<VcQuarterlyAssessment>) };
-  const nextStatus = (body.status as string | undefined) ?? cur.status;
+  const requestedStatus = (body.status as string | undefined) ?? cur.status;
 
-  if (nextStatus === 'submitted' && cur.status === 'draft') {
+  const finalizingFromDraft =
+    cur.status === 'draft' && (requestedStatus === 'submitted' || requestedStatus === 'approved');
+  if (finalizingFromDraft) {
     const err = validateSubmitted(next);
     if (err) return NextResponse.json({ error: err }, { status: 400 });
   }
 
-  if (nextStatus === 'approved' && cur.status === 'submitted') {
-    if (profile.role !== 'admin') {
-      return NextResponse.json({ error: 'Only administrators can approve assessments.' }, { status: 403 });
-    }
-  }
-
-  if (nextStatus === 'draft' && cur.status === 'submitted') {
+  if (requestedStatus === 'draft' && cur.status === 'submitted') {
     if (profile.role !== 'admin') {
       return NextResponse.json({ error: 'Only administrators can return an assessment for revision.' }, { status: 403 });
     }
@@ -226,7 +193,25 @@ export async function PUT(req: Request, ctx: Ctx) {
   ]);
   const patch: Record<string, unknown> = {};
   for (const k of Object.keys(body)) {
-    if (allowed.has(k)) patch[k] = body[k];
+    if (!allowed.has(k)) continue;
+    if (k === 'status' && body.status === 'submitted' && cur.status !== 'draft') {
+      continue;
+    }
+    patch[k] = body[k];
+  }
+  if (requestedStatus === 'submitted' && cur.status === 'draft') {
+    patch.status = 'approved';
+  }
+  const becomesApproved =
+    (cur.status === 'draft' && (requestedStatus === 'submitted' || requestedStatus === 'approved')) ||
+    (cur.status === 'submitted' && requestedStatus === 'approved');
+  if (becomesApproved) {
+    patch.approved_by = profile.profile_id;
+    patch.approved_at = new Date().toISOString();
+  }
+  if (requestedStatus === 'draft' && cur.status === 'submitted') {
+    patch.approved_by = null;
+    patch.approved_at = null;
   }
   if (weighted != null) {
     patch.weighted_total_score = weighted;
@@ -241,16 +226,6 @@ export async function PUT(req: Request, ctx: Ctx) {
       const s = scores[d];
       if (s != null) patch[f] = s;
     }
-  }
-
-  if (nextStatus === 'approved' && cur.status === 'submitted') {
-    patch.approved_by = profile.profile_id;
-    patch.approved_at = new Date().toISOString();
-  }
-
-  if (nextStatus === 'draft' && cur.status === 'submitted') {
-    patch.approved_by = null;
-    patch.approved_at = null;
   }
 
   const { data: updated, error: upErr } = await supabase

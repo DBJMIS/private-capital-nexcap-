@@ -88,7 +88,9 @@ export async function GET(_req: Request, ctx: Ctx) {
 
   const { data: rowsRaw, error: dErr } = await supabase
     .from('vc_distributions')
-    .select('*')
+    .select(
+      'id, fund_id, distribution_number, distribution_date, return_type, amount, currency, units, per_unit_amount, cumulative_total, source_company, reference_number, notes, created_at, updated_at',
+    )
     .eq('tenant_id', profile.tenant_id)
     .eq('fund_id', fundId)
     .order('distribution_number', { ascending: true });
@@ -182,7 +184,9 @@ export async function POST(req: Request, ctx: Ctx) {
         reference_number: body.reference_number?.trim() || null,
         created_by: profile.profile_id,
       })
-      .select('*')
+      .select(
+        'id, fund_id, distribution_number, distribution_date, return_type, amount, currency, units, per_unit_amount, cumulative_total, source_company, reference_number, notes, created_at, updated_at',
+      )
       .single();
     if (iErr || !inserted) {
       console.error('[distributions:insert]', iErr);
@@ -198,7 +202,9 @@ export async function POST(req: Request, ctx: Ctx) {
 
     const { data: created, error: rErr } = await supabase
       .from('vc_distributions')
-      .select('*')
+      .select(
+        'id, fund_id, distribution_number, distribution_date, return_type, amount, currency, units, per_unit_amount, cumulative_total, source_company, reference_number, notes, created_at, updated_at',
+      )
       .eq('tenant_id', profile.tenant_id)
       .eq('id', inserted.id)
       .single();

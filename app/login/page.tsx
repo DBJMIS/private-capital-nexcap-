@@ -2,6 +2,7 @@
 
 import type { CSSProperties } from 'react';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import { signIn } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
 import { Lock, Mail } from 'lucide-react';
@@ -164,11 +165,13 @@ function LoginContent() {
       <div className="absolute inset-0 z-10 bg-gradient-to-br from-black/10 to-black/25" />
 
       <div className="pointer-events-none absolute right-16 top-10 z-[25]">
-        <img
+        <Image
           src="/vc_logo-bg.png"
           alt="NexCap — Capital Management Platform"
+          width={240}
+          height={40}
           className="h-9 w-auto max-w-[200px] object-contain object-right drop-shadow-[0_1px_3px_rgba(0,0,0,0.55)] md:h-10 md:max-w-[240px]"
-          decoding="async"
+          priority
         />
       </div>
 
@@ -178,11 +181,12 @@ function LoginContent() {
           style={{ right: 'calc(380px + 4.5rem)' }}
         >
           <div className="pointer-events-auto flex items-center gap-3">
-            <img
+            <Image
               src="/circle%20logo.png"
               alt="NexCap"
+              width={44}
+              height={44}
               className="h-10 w-10 shrink-0 object-contain drop-shadow-[0_1px_3px_rgba(0,0,0,0.45)] md:h-11 md:w-11"
-              decoding="async"
             />
           </div>
 

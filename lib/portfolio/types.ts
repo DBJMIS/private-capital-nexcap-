@@ -17,6 +17,7 @@ export type PortfolioFundRow = {
   commitment_id: string | null;
   fund_name: string;
   manager_name: string;
+  fund_manager_id?: string | null;
   fund_representative: string | null;
   manager_email: string | null;
   manager_phone: string | null;

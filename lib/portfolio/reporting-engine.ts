@@ -185,27 +185,27 @@ export async function refreshObligationStatuses(supabase: SupabaseClient, tenant
   minus30.setDate(minus30.getDate() - 30);
   const minus30Str = toDateStr(minus30);
 
-  await supabase
-    .from('vc_reporting_obligations')
-    .update({ status: 'due' })
-    .eq('tenant_id', tenantId)
-    .eq('status', 'pending')
-    .lte('due_date', in14Str)
-    .gte('due_date', todayStr);
-
-  await supabase
-    .from('vc_reporting_obligations')
-    .update({ status: 'outstanding' })
-    .eq('tenant_id', tenantId)
-    .in('status', ['pending', 'due'])
-    .lt('due_date', todayStr);
-
-  await supabase
-    .from('vc_reporting_obligations')
-    .update({ status: 'overdue' })
-    .eq('tenant_id', tenantId)
-    .eq('status', 'outstanding')
-    .lt('due_date', minus30Str);
+  await Promise.all([
+    supabase
+      .from('vc_reporting_obligations')
+      .update({ status: 'due' })
+      .eq('tenant_id', tenantId)
+      .eq('status', 'pending')
+      .lte('due_date', in14Str)
+      .gte('due_date', todayStr),
+    supabase
+      .from('vc_reporting_obligations')
+      .update({ status: 'outstanding' })
+      .eq('tenant_id', tenantId)
+      .in('status', ['pending', 'due'])
+      .lt('due_date', todayStr),
+    supabase
+      .from('vc_reporting_obligations')
+      .update({ status: 'overdue' })
+      .eq('tenant_id', tenantId)
+      .eq('status', 'outstanding')
+      .lt('due_date', minus30Str),
+  ]);
 
   const { data: rows } = await supabase
     .from('vc_reporting_obligations')
@@ -214,12 +214,20 @@ export async function refreshObligationStatuses(supabase: SupabaseClient, tenant
     .in('status', ['outstanding', 'overdue']);
 
   const dueMs = today.getTime();
+  const overdueUpdates: Promise<unknown>[] = [];
   for (const row of rows ?? []) {
     const r = row as { id: string; due_date: string; status: string };
     const due = new Date(`${r.due_date}T12:00:00`);
     const days = Math.max(0, Math.floor((dueMs - due.getTime()) / MS_PER_DAY));
     if (r.status === 'outstanding' || r.status === 'overdue') {
-      await supabase.from('vc_reporting_obligations').update({ days_overdue: days }).eq('id', r.id).eq('tenant_id', tenantId);
+      overdueUpdates.push(
+        Promise.resolve(
+          supabase.from('vc_reporting_obligations').update({ days_overdue: days }).eq('id', r.id).eq('tenant_id', tenantId),
+        ),
+      );
     }
+  }
+  if (overdueUpdates.length > 0) {
+    await Promise.all(overdueUpdates);
   }
 }

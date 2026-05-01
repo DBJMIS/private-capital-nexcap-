@@ -53,10 +53,28 @@ export async function POST(_req: Request, ctx: Ctx) {
   const pf = fund as PortfolioFundRow;
 
   const [obRes, snapRes, callsRes, distRes, cfgRes, nxRes] = await Promise.all([
-    supabase.from('vc_reporting_obligations').select('*').eq('tenant_id', profile.tenant_id).eq('fund_id', fundId),
-    supabase.from('vc_fund_snapshots').select('*').eq('tenant_id', profile.tenant_id).eq('fund_id', fundId).order('snapshot_date', { ascending: false }).limit(1),
-    supabase.from('vc_capital_calls').select('*').eq('tenant_id', profile.tenant_id).eq('fund_id', fundId),
-    supabase.from('vc_distributions').select('*').eq('tenant_id', profile.tenant_id).eq('fund_id', fundId),
+    supabase
+      .from('vc_reporting_obligations')
+      .select('id, fund_id, report_type, status, due_date, days_overdue, period_year, period_month')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('fund_id', fundId),
+    supabase
+      .from('vc_fund_snapshots')
+      .select('id, fund_id, snapshot_date, nav, committed_capital, distributions_in_period, reported_irr')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('fund_id', fundId)
+      .order('snapshot_date', { ascending: false })
+      .limit(1),
+    supabase
+      .from('vc_capital_calls')
+      .select('id, fund_id, notice_number, date_of_notice, call_amount, currency, status, total_called_to_date')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('fund_id', fundId),
+    supabase
+      .from('vc_distributions')
+      .select('id, fund_id, distribution_date, amount, currency, return_type')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('fund_id', fundId),
     fetchAssessmentConfigRow(supabase, profile.tenant_id),
     supabase.from('vc_fund_narrative_extracts').select('*').eq('tenant_id', profile.tenant_id).eq('fund_id', fundId).order('extracted_at', { ascending: false }).limit(1),
   ]);
@@ -68,7 +86,11 @@ export async function POST(_req: Request, ctx: Ctx) {
   const callIds = calls.map((c) => c.id);
   let callItems: VcCapitalCallItem[] = [];
   if (callIds.length) {
-    const itemsRes = await supabase.from('vc_capital_call_items').select('*').eq('tenant_id', profile.tenant_id).in('capital_call_id', callIds);
+    const itemsRes = await supabase
+      .from('vc_capital_call_items')
+      .select('id, capital_call_id, purpose_category, amount, currency, investee_company')
+      .eq('tenant_id', profile.tenant_id)
+      .in('capital_call_id', callIds);
     if (itemsRes.error) return NextResponse.json({ error: itemsRes.error.message }, { status: 500 });
     callItems = (itemsRes.data ?? []) as VcCapitalCallItem[];
   }

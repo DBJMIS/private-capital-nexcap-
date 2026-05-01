@@ -3,6 +3,7 @@ import nextDynamic from 'next/dynamic';
 import { AlertCircle, Building2, DollarSign, ShieldCheck } from 'lucide-react';
 
 import type { PortfolioDashboardChartsProps } from './PortfolioDashboardCharts.client';
+import { PortfolioIntelligenceCard } from './PortfolioIntelligenceCard.client';
 import { loadComplianceFundRows } from '@/lib/portfolio/compliance-fund-rows';
 import { createServerClient } from '@/lib/supabase/server';
 import { getProfile, requireAuth } from '@/lib/auth/session';
@@ -115,8 +116,22 @@ export default async function PortfolioPage() {
   }
 
   const supabase = createServerClient();
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
 
-  const { funds, rows, error } = await loadComplianceFundRows(supabase, profile.tenant_id);
+  const [{ funds, rows, error }, aiNarrativeRes] = await Promise.all([
+    loadComplianceFundRows(supabase, profile.tenant_id),
+    supabase
+      .from('ai_benchmark_narratives')
+      .select('narrative, headline_stats, created_at')
+      .eq('scope', 'full_portfolio')
+      .gte('created_at', monthStart)
+      .lt('created_at', monthEnd)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
   const complianceRows = rows;
 
   if (error) {
@@ -248,6 +263,19 @@ export default async function PortfolioPage() {
     hasAnyObligations,
   };
 
+  const initialIntelligence = aiNarrativeRes.data
+    ? {
+        narrative: String((aiNarrativeRes.data as { narrative: string }).narrative ?? ''),
+        headline_stats: (((aiNarrativeRes.data as { headline_stats: unknown }).headline_stats as Array<{
+          label: string;
+          value: string;
+          context: string;
+        }>) ?? []),
+        generated_at: String((aiNarrativeRes.data as { created_at: string }).created_at),
+      }
+    : null;
+  const canRegenerate = profile.role === 'it_admin' || profile.role === 'portfolio_manager' || can(profile, 'write:applications');
+
   return (
     <div className="w-full space-y-8">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -299,6 +327,8 @@ export default async function PortfolioPage() {
           </p>
         </div>
       </div>
+
+      <PortfolioIntelligenceCard initial={initialIntelligence} canRegenerate={canRegenerate} />
 
       <PortfolioDashboardCharts {...chartProps} />
     </div>

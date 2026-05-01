@@ -221,6 +221,7 @@ export function Sidebar({ user, collapsed: _collapsed, onToggleCollapsed: _onTog
             width={180}
             height={48}
             className="h-auto w-auto max-w-[180px] object-contain object-left"
+            style={{ width: 'auto', height: 'auto' }}
             priority
           />
         </Link>

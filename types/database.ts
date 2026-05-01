@@ -884,6 +884,7 @@ export type Database = {
           commitment_id: string | null;
           fund_name: string;
           manager_name: string;
+          fund_manager_id: string | null;
           fund_representative: string | null;
           manager_email: string | null;
           manager_phone: string | null;
@@ -930,6 +931,7 @@ export type Database = {
           commitment_id?: string | null;
           fund_name: string;
           manager_name: string;
+          fund_manager_id?: string | null;
           fund_representative?: string | null;
           manager_email?: string | null;
           manager_phone?: string | null;
@@ -976,6 +978,7 @@ export type Database = {
           commitment_id?: string | null;
           fund_name?: string;
           manager_name?: string;
+          fund_manager_id?: string | null;
           fund_representative?: string | null;
           manager_email?: string | null;
           manager_phone?: string | null;
@@ -1617,6 +1620,168 @@ export type Database = {
         };
         Relationships: [];
       };
+      benchmark_indices: {
+        Row: {
+          id: string;
+          index_name: string;
+          vintage_year: number;
+          asset_class: string;
+          geography: string;
+          median_irr: number;
+          top_quartile_irr: number;
+          median_moic: number;
+          top_quartile_moic: number;
+          source: string;
+          as_of_date: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          index_name: string;
+          vintage_year: number;
+          asset_class: string;
+          geography: string;
+          median_irr: number;
+          top_quartile_irr: number;
+          median_moic: number;
+          top_quartile_moic: number;
+          source: string;
+          as_of_date: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          index_name?: string;
+          vintage_year?: number;
+          asset_class?: string;
+          geography?: string;
+          median_irr?: number;
+          top_quartile_irr?: number;
+          median_moic?: number;
+          top_quartile_moic?: number;
+          source?: string;
+          as_of_date?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      fund_managers: {
+        Row: {
+          id: string;
+          tenant_id: string;
+          name: string;
+          firm_name: string;
+          email: string | null;
+          phone: string | null;
+          linkedin_url: string | null;
+          first_contact_date: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          tenant_id: string;
+          name: string;
+          firm_name: string;
+          email?: string | null;
+          phone?: string | null;
+          linkedin_url?: string | null;
+          first_contact_date?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          tenant_id?: string;
+          name?: string;
+          firm_name?: string;
+          email?: string | null;
+          phone?: string | null;
+          linkedin_url?: string | null;
+          first_contact_date?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      fund_manager_notes: {
+        Row: {
+          id: string;
+          tenant_id: string;
+          fund_manager_id: string;
+          note: string;
+          added_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          tenant_id: string;
+          fund_manager_id: string;
+          note: string;
+          added_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          tenant_id?: string;
+          fund_manager_id?: string;
+          note?: string;
+          added_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      ai_relationship_profiles: {
+        Row: {
+          id: string;
+          tenant_id: string;
+          fund_manager_id: string;
+          profile: Json;
+          generated_at: string;
+          version: number;
+        };
+        Insert: {
+          id?: string;
+          tenant_id: string;
+          fund_manager_id: string;
+          profile: Json;
+          generated_at?: string;
+          version?: number;
+        };
+        Update: {
+          id?: string;
+          tenant_id?: string;
+          fund_manager_id?: string;
+          profile?: Json;
+          generated_at?: string;
+          version?: number;
+        };
+        Relationships: [];
+      };
+      ai_benchmark_narratives: {
+        Row: {
+          id: string;
+          scope: string;
+          fund_id: string | null;
+          narrative: string;
+          headline_stats: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          scope: string;
+          fund_id?: string | null;
+          narrative: string;
+          headline_stats?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          scope?: string;
+          fund_id?: string | null;
+          narrative?: string;
+          headline_stats?: Json;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       vc_distributions: {
         Row: {
           id: string;
@@ -1671,6 +1836,73 @@ export type Database = {
           source_company?: string | null;
           notes?: string | null;
           reference_number?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      vc_divestments: {
+        Row: {
+          id: string;
+          tenant_id: string;
+          fund_id: string;
+          company_name: string;
+          divestment_type: string;
+          announcement_date: string | null;
+          completion_date: string;
+          original_investment_amount: number;
+          proceeds_received: number;
+          currency: string;
+          multiple_on_invested_capital: number | null;
+          is_full_exit: boolean;
+          remaining_stake_pct: number | null;
+          exit_route: string | null;
+          notes: string | null;
+          buyer_name: string | null;
+          status: string;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          tenant_id: string;
+          fund_id: string;
+          company_name: string;
+          divestment_type: string;
+          announcement_date?: string | null;
+          completion_date: string;
+          original_investment_amount: number;
+          proceeds_received: number;
+          currency: string;
+          is_full_exit?: boolean;
+          remaining_stake_pct?: number | null;
+          exit_route?: string | null;
+          notes?: string | null;
+          buyer_name?: string | null;
+          status?: string;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          tenant_id?: string;
+          fund_id?: string;
+          company_name?: string;
+          divestment_type?: string;
+          announcement_date?: string | null;
+          completion_date?: string;
+          original_investment_amount?: number;
+          proceeds_received?: number;
+          currency?: string;
+          is_full_exit?: boolean;
+          remaining_stake_pct?: number | null;
+          exit_route?: string | null;
+          notes?: string | null;
+          buyer_name?: string | null;
+          status?: string;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -1832,6 +2064,24 @@ export type VcCapitalCallItem = Database['public']['Tables']['vc_capital_call_it
 
 /** Row shape for `public.vc_distributions` (Epic 6). */
 export type VcDistribution = Database['public']['Tables']['vc_distributions']['Row'];
+
+/** Row shape for `public.vc_divestments`. */
+export type VcDivestment = Database['public']['Tables']['vc_divestments']['Row'];
+
+/** Row shape for `public.benchmark_indices`. */
+export type BenchmarkIndexRow = Database['public']['Tables']['benchmark_indices']['Row'];
+
+/** Row shape for `public.ai_benchmark_narratives`. */
+export type AiBenchmarkNarrativeRow = Database['public']['Tables']['ai_benchmark_narratives']['Row'];
+
+/** Row shape for `public.fund_managers`. */
+export type FundManagerRow = Database['public']['Tables']['fund_managers']['Row'];
+
+/** Row shape for `public.fund_manager_notes`. */
+export type FundManagerNoteRow = Database['public']['Tables']['fund_manager_notes']['Row'];
+
+/** Row shape for `public.ai_relationship_profiles`. */
+export type AiRelationshipProfileRow = Database['public']['Tables']['ai_relationship_profiles']['Row'];
 
 /** Row shape for `public.vc_fund_snapshots` (Epic 12). */
 export type VcFundSnapshot = Database['public']['Tables']['vc_fund_snapshots']['Row'];

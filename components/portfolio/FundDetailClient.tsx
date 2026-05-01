@@ -5,11 +5,13 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, Upload } from 'lucide-react';
 
+import { FundManagerRelationshipCard } from '@/components/portfolio/FundManagerRelationshipCard';
 import { FundAssessmentsTab } from '@/components/portfolio/FundAssessmentsTab';
 import { FundSettingsShell } from '@/components/portfolio/FundSettingsShell';
 import { FundCapitalCallsTab } from '@/components/portfolio/FundCapitalCallsTab';
 import { FundDistributionsTab } from '@/components/portfolio/FundDistributionsTab';
 import { FundPerformanceTab } from '@/components/portfolio/FundPerformanceTab';
+import { FundDivestmentsTab } from '@/components/portfolio/FundDivestmentsTab';
 import { MarkReceivedSlideOver } from '@/components/portfolio/MarkReceivedSlideOver';
 import { UnifiedExtractionReviewModal, type UnifiedExtractApiResponse } from '@/components/portfolio/UnifiedExtractionReviewModal';
 import { Button } from '@/components/ui/button';
@@ -119,7 +121,7 @@ function daysUntilDue(due: string): { text: string; tone: 'gray' | 'amber' | 're
   return { text: `${diff} days overdue`, tone: 'red' };
 }
 
-type Tab = 'overview' | 'reporting' | 'calls' | 'distributions' | 'performance' | 'assessments' | 'documents' | 'settings';
+type Tab = 'overview' | 'reporting' | 'calls' | 'distributions' | 'divestments' | 'performance' | 'assessments' | 'documents' | 'settings';
 
 export function FundDetailClient({
   fund: initialFund,
@@ -384,6 +386,7 @@ export function FundDetailClient({
     { k: 'reporting', label: 'Reporting' },
     { k: 'calls', label: 'Capital Calls' },
     { k: 'distributions', label: 'Distributions' },
+    { k: 'divestments', label: 'Divestments' },
     { k: 'performance', label: 'Performance' },
     { k: 'assessments', label: 'Assessments' },
     { k: 'documents', label: 'Documents' },
@@ -397,6 +400,7 @@ export function FundDetailClient({
       reporting: 'reporting',
       calls: 'calls',
       distributions: 'distributions',
+      divestments: 'divestments',
       performance: 'performance',
       assessments: 'assessments',
       documents: 'documents',
@@ -771,6 +775,7 @@ export function FundDetailClient({
               <p className="mt-4 text-xs font-semibold uppercase text-gray-400">Overall</p>
               <span className="mt-1 inline-block whitespace-nowrap rounded-full bg-[#EEF3FB] px-3 py-1 text-sm font-medium text-[#0B1F45]">{overall}</span>
             </section>
+            <FundManagerRelationshipCard fundId={fund.id} canWrite={canWrite} />
           </div>
         </div>
       ) : null}
@@ -987,6 +992,7 @@ export function FundDetailClient({
 
       {tab === 'calls' ? <FundCapitalCallsTab fund={fund} canWrite={canWrite} /> : null}
       {tab === 'distributions' ? <FundDistributionsTab fund={fund} canWrite={canWrite} /> : null}
+      {tab === 'divestments' ? <FundDivestmentsTab fund={{ id: fund.id, currency: fund.currency as 'USD' | 'JMD', fund_name: fund.fund_name }} canWrite={canWrite} /> : null}
       {tab === 'assessments' ? <FundAssessmentsTab fundId={fund.id} canWrite={canWrite} /> : null}
       {tab === 'performance' ? (
         <FundPerformanceTab fund={fund} canWrite={canWrite} canDelete={canDeleteSnapshots} />

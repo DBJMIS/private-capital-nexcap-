@@ -86,7 +86,9 @@ export default async function FundApplicationDetailPage({ params }: { params: Pr
     await Promise.all([
       supabase
         .from('vc_prequalification')
-        .select('*')
+        .select(
+          'id, tenant_id, application_id, s21_company_info, s21_fund_info, s21_fund_strategy, s21_fund_management, s21_legal_regulatory, s21_comments, s22_company_management, s22_fund_general, s22_fund_financial, s22_fund_esg, s22_comments, date_received, time_received, soft_copy_received, hard_copy_received, prequalified, not_prequalified, reviewed_by, reviewer_name, reviewed_at, overall_status, ai_summary, ai_analysed_at, proposal_document_path, created_at, updated_at',
+        )
         .eq('tenant_id', profile.tenant_id)
         .eq('application_id', row.id)
         .maybeSingle(),
@@ -139,19 +141,25 @@ export default async function FundApplicationDetailPage({ params }: { params: Pr
         .maybeSingle(),
       supabase
         .from('vc_site_visits')
-        .select('*')
+        .select(
+          'id, tenant_id, application_id, scheduled_date, actual_date, status, location, dbj_attendees, outcome, outcome_notes, legal_docs_reviewed, legal_docs_notes, report_file_path, report_file_name, notes, conducted_by, created_by, created_at, updated_at',
+        )
         .eq('application_id', row.id)
         .eq('tenant_id', profile.tenant_id)
         .maybeSingle(),
       supabase
         .from('vc_contracts')
-        .select('*')
+        .select(
+          'id, tenant_id, application_id, contract_type, status, commitment_amount, commitment_currency, dbj_pro_rata_pct, management_fee_pct, carried_interest_pct, hurdle_rate_pct, fund_life_years, investment_period_years, legal_review_started_at, legal_review_completed_at, legal_reviewer_notes, adobe_sign_agreement_id, adobe_sign_status, signed_at, signed_by_dbj, signed_by_fund_manager, contract_file_path, contract_file_name, negotiation_rounds, created_by, created_at, updated_at',
+        )
         .eq('application_id', row.id)
         .eq('tenant_id', profile.tenant_id)
         .maybeSingle(),
       supabase
         .from('vc_commitments')
-        .select('*')
+        .select(
+          'id, tenant_id, application_id, contract_id, fund_name, manager_name, fund_representative, commitment_amount, commitment_currency, dbj_pro_rata_pct, fund_year_end_month, listed, quarterly_report_due_days, audit_report_due_days, status, committed_at, first_drawdown_date, fund_close_date, created_by, created_at, updated_at',
+        )
         .eq('application_id', row.id)
         .eq('tenant_id', profile.tenant_id)
         .maybeSingle(),

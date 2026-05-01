@@ -209,11 +209,11 @@ export function FundPerformanceTab({
       <section className="rounded-xl border border-gray-200 bg-white p-4">
         <h3 className="text-sm font-semibold text-[#0B1F45]">Cash flows &amp; NAV</h3>
         <p className="mt-1 text-xs text-gray-500">Monthly capital calls (down), distributions (up){isPvc ? '.' : ', and NAV after each snapshot.'}</p>
-        <div className="mt-4 h-72 w-full min-w-0">
+        <div className="mt-4 h-[280px] w-full min-w-0">
           {chartData.length === 0 ? (
             <p className="py-12 text-center text-sm text-gray-500">No chart data yet.</p>
           ) : (
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height={280} minWidth={280} minHeight={280}>
               <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} stackOffset="sign">
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis dataKey="month" tick={{ fontSize: 11 }} />

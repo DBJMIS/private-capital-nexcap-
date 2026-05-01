@@ -97,8 +97,8 @@ const loadFundMonitoringBase = unstable_cache(
       .order('fund_name', { ascending: true });
     return funds ?? [];
   },
-  ['fund-monitoring-base'],
-  { revalidate: 300 },
+  ['portfolio-funds-list'],
+  { revalidate: 300, tags: ['portfolio-funds'] },
 );
 
 function toUsd(fund: PortfolioFundRow): number {

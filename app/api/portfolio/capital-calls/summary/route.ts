@@ -50,7 +50,9 @@ export async function GET() {
 
   const { data: callsRaw, error: cErr } = await supabase
     .from('vc_capital_calls')
-    .select('*')
+    .select(
+      'id, fund_id, notice_number, date_of_notice, due_date, date_paid, call_amount, currency, status, total_called_to_date, remaining_commitment, notes, created_at, updated_at',
+    )
     .eq('tenant_id', profile.tenant_id)
     .in('fund_id', fundIds);
 
@@ -62,7 +64,7 @@ export async function GET() {
   if (callIds.length > 0) {
     const { data: itemsRaw, error: iErr } = await supabase
       .from('vc_capital_call_items')
-      .select('*')
+      .select('id, capital_call_id, purpose_category, amount, currency, investee_company, description, sort_order')
       .eq('tenant_id', profile.tenant_id)
       .in('capital_call_id', callIds);
     if (iErr) return NextResponse.json({ error: iErr.message }, { status: 500 });

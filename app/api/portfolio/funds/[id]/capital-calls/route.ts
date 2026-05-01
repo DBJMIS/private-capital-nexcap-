@@ -100,7 +100,9 @@ export async function GET(_req: Request, ctx: Ctx) {
 
   const { data: callsRaw, error: cErr } = await supabase
     .from('vc_capital_calls')
-    .select('*')
+    .select(
+      'id, fund_id, notice_number, date_of_notice, due_date, date_paid, call_amount, currency, status, total_called_to_date, remaining_commitment, notes, created_at, updated_at',
+    )
     .eq('tenant_id', profile.tenant_id)
     .eq('fund_id', fundId)
     .order('notice_number', { ascending: true });
@@ -113,7 +115,7 @@ export async function GET(_req: Request, ctx: Ctx) {
   if (ids.length > 0) {
     const { data: itemsRaw, error: iErr } = await supabase
       .from('vc_capital_call_items')
-      .select('*')
+      .select('id, capital_call_id, purpose_category, amount, currency, investee_company, description, sort_order')
       .eq('tenant_id', profile.tenant_id)
       .in('capital_call_id', ids)
       .order('sort_order', { ascending: true });
@@ -224,7 +226,9 @@ export async function POST(req: Request, ctx: Ctx) {
         notes: body.notes?.trim() || null,
         created_by: profile.profile_id,
       })
-      .select('*')
+      .select(
+        'id, fund_id, notice_number, date_of_notice, due_date, date_paid, call_amount, currency, status, total_called_to_date, remaining_commitment, notes, created_at, updated_at',
+      )
       .single();
 
     if (insErr || !created) {
@@ -247,7 +251,7 @@ export async function POST(req: Request, ctx: Ctx) {
           currency: fundCurrency,
           sort_order: it.sort_order,
         })
-        .select('*')
+        .select('id, capital_call_id, purpose_category, amount, currency, investee_company, description, sort_order')
         .single();
       if (itemErr || !row) {
         await supabase.from('vc_capital_calls').delete().eq('id', call.id).eq('tenant_id', profile.tenant_id);

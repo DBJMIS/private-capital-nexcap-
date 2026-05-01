@@ -92,7 +92,9 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const supabase = createServerClient();
     const { data: row, error: rErr } = await supabase
       .from('vc_reporting_obligations')
-      .select('*')
+      .select(
+        'id, tenant_id, fund_id, report_type, period_label, due_date, status, submitted_date, submitted_by, reviewed_date, reviewed_by, review_notes, document_path, document_name, document_size_bytes, days_overdue, reminder_sent_at, reminder_sent_to, escalated_at, escalated_to, escalation_level, actioned_by, actioned_at, updated_at',
+      )
       .eq('tenant_id', profile.tenant_id)
       .eq('id', id)
       .maybeSingle();
@@ -162,7 +164,9 @@ export async function PATCH(req: Request, ctx: Ctx) {
         .update(patch)
         .eq('tenant_id', profile.tenant_id)
         .eq('id', id)
-        .select('*')
+        .select(
+          'id, tenant_id, fund_id, report_type, period_label, due_date, status, submitted_date, submitted_by, reviewed_date, reviewed_by, review_notes, document_path, document_name, document_size_bytes, days_overdue, reminder_sent_at, reminder_sent_to, escalated_at, escalated_to, escalation_level, actioned_by, actioned_at, updated_at',
+        )
         .single();
 
       if (error || !updated) {
@@ -190,7 +194,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
       const { data: action } = actionRow?.id
         ? await supabase
             .from('vc_compliance_actions')
-            .select('*')
+            .select('id, obligation_id, fund_id, action_type, actor_id, actor_name, from_status, to_status, notes, recipient, created_at')
             .eq('tenant_id', profile.tenant_id)
             .eq('id', actionRow.id)
             .single()
@@ -233,7 +237,9 @@ export async function PATCH(req: Request, ctx: Ctx) {
       .update(patch)
       .eq('tenant_id', profile.tenant_id)
       .eq('id', id)
-      .select('*')
+      .select(
+        'id, tenant_id, fund_id, report_type, period_label, due_date, status, submitted_date, submitted_by, reviewed_date, reviewed_by, review_notes, document_path, document_name, document_size_bytes, days_overdue, reminder_sent_at, reminder_sent_to, escalated_at, escalated_to, escalation_level, actioned_by, actioned_at, updated_at',
+      )
       .single();
 
     if (error || !updated) {
@@ -258,7 +264,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
     });
     const { data: last } = await supabase
       .from('vc_compliance_actions')
-      .select('*')
+      .select('id, obligation_id, fund_id, action_type, actor_id, actor_name, from_status, to_status, notes, recipient, created_at')
       .eq('tenant_id', profile.tenant_id)
       .eq('obligation_id', id)
       .order('created_at', { ascending: false })
@@ -280,7 +286,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
     });
     const { data: last } = await supabase
       .from('vc_compliance_actions')
-      .select('*')
+      .select('id, obligation_id, fund_id, action_type, actor_id, actor_name, from_status, to_status, notes, recipient, created_at')
       .eq('tenant_id', profile.tenant_id)
       .eq('obligation_id', id)
       .order('created_at', { ascending: false })
@@ -302,7 +308,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
     });
     const { data: last } = await supabase
       .from('vc_compliance_actions')
-      .select('*')
+      .select('id, obligation_id, fund_id, action_type, actor_id, actor_name, from_status, to_status, notes, recipient, created_at')
       .eq('tenant_id', profile.tenant_id)
       .eq('obligation_id', id)
       .order('created_at', { ascending: false })
@@ -324,7 +330,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
     });
     const { data: last } = await supabase
       .from('vc_compliance_actions')
-      .select('*')
+      .select('id, obligation_id, fund_id, action_type, actor_id, actor_name, from_status, to_status, notes, recipient, created_at')
       .eq('tenant_id', profile.tenant_id)
       .eq('obligation_id', id)
       .order('created_at', { ascending: false })

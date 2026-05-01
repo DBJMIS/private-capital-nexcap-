@@ -32,13 +32,23 @@ export default async function PortfolioFundDetailPage({ params }: { params: Prom
   const supabase = createServerClient();
 
   const [{ data: fund, error }, { data: obligations }] = await Promise.all([
-    supabase.from('vc_portfolio_funds').select('*').eq('tenant_id', profile.tenant_id).eq('id', id).maybeSingle(),
+    supabase
+      .from('vc_portfolio_funds')
+      .select(
+        'id, tenant_id, application_id, commitment_id, fund_name, manager_name, fund_manager_id, fund_representative, manager_email, manager_phone, currency, total_fund_commitment, dbj_commitment, dbj_pro_rata_pct, listed, fund_status, year_end_month, quarterly_report_due_days, audit_report_due_days, requires_quarterly_financial, requires_quarterly_inv_mgmt, requires_audited_annual, requires_inhouse_quarterly, report_months, audit_month, exchange_rate_jmd_usd, commitment_date, fund_close_date, fund_life_years, investment_period_years, contacts, notes, created_by, created_at, updated_at, fund_category, fund_end_date, is_pvc, management_fee_pct, performance_fee_pct, hurdle_rate_pct, target_irr_pct, sector_focus, impact_objectives, pctu_profile',
+      )
+      .eq('tenant_id', profile.tenant_id)
+      .eq('id', id)
+      .maybeSingle(),
     supabase
       .from('vc_reporting_obligations')
-      .select('*')
+      .select(
+        'id, fund_id, report_type, period_label, due_date, status, days_overdue, submitted_date, submitted_by, reviewed_date, document_path, document_name, escalation_level, reminder_sent_at, period_year, period_month',
+      )
       .eq('tenant_id', profile.tenant_id)
       .eq('fund_id', id)
-      .order('due_date', { ascending: true }),
+      .order('due_date', { ascending: true })
+      .limit(100),
   ]);
 
   if (error || !fund) notFound();

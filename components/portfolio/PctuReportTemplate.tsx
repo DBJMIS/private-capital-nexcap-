@@ -1,6 +1,7 @@
 'use client';
 
 import type { CSSProperties } from 'react';
+import Image from 'next/image';
 import {
   Bar,
   BarChart,
@@ -303,7 +304,13 @@ export function PctuReportTemplate({ data, showLogo }: { data: PctuReportPayload
         {showLogo ? (
           <div className="mb-3 text-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/branding/dbj-logo.svg" alt="DBJ" className="mx-auto h-10 w-auto max-w-[140px] object-contain" />
+            <Image
+              src="/branding/dbj-logo.svg"
+              alt="DBJ"
+              width={140}
+              height={40}
+              className="mx-auto h-10 w-auto max-w-[140px] object-contain"
+            />
           </div>
         ) : null}
         <div className="text-center">

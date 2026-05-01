@@ -53,7 +53,9 @@ export async function GET() {
 
   const { data: distRaw, error: dErr } = await supabase
     .from('vc_distributions')
-    .select('*')
+    .select(
+      'id, tenant_id, fund_id, distribution_number, distribution_date, return_type, amount, currency, units, per_unit_amount, cumulative_total, source_company, notes, reference_number, created_by, created_at, updated_at',
+    )
     .eq('tenant_id', profile.tenant_id)
     .in('fund_id', fundIds);
   if (dErr) return NextResponse.json({ error: dErr.message }, { status: 500 });
