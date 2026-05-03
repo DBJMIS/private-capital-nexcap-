@@ -75,7 +75,7 @@ export const DD_SECTION_LAYOUT: Record<DdSectionKey, SectionLayoutGroup[]> = {
       rows: [['networking_assets', 'sourcing_strategy'], ['deal_flow_universe']],
     },
     {
-      title: 'Pipeline',
+      title: 'onboarding',
       rows: [['pipeline_companies']],
     },
     {

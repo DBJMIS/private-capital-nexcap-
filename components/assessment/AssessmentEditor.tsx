@@ -9,6 +9,7 @@ import { determineOutcome, previewOverallWeighted } from '@/lib/scoring/calculat
 import type { SubcriteriaState } from '@/components/assessment/CriteriaTab';
 import { AssessmentWorkspace } from '@/components/assessment/AssessmentWorkspace';
 import { AssessmentInsightsDashboard } from '@/components/assessment/AssessmentInsightsDashboard';
+import { AIFollowupQuestionsCard } from '@/components/assessments/AIFollowupQuestionsCard';
 import { Button } from '@/components/ui/button';
 import { EntityActivitySection } from '@/components/audit/EntityActivitySection';
 import { formatDateTime } from '@/lib/format-date';
@@ -480,21 +481,30 @@ export function AssessmentEditor({
       ) : null}
 
       {mainTab === 'scoring' ? (
-        <AssessmentWorkspace
-          questionnaireId={payload.assessment.questionnaire_id ?? questionnaireBundle.id ?? null}
-          bundle={questionnaireBundle}
-          aiOverall={payload.assessment.ai_overall_assessment ?? null}
-          aiRaw={payload.assessment.ai_subcriteria_suggestions ?? null}
-          locked={locked}
-          editable={editable}
-          state={state}
-          onCellChange={onCellChange}
-          saveSection={saveSection}
-          saving={saving}
-          scoredSubCount={scoredSubCount}
-          totalSubs={totalSubs}
-          activityAssessmentId={assessmentId}
-        />
+        <>
+          <AssessmentWorkspace
+            questionnaireId={payload.assessment.questionnaire_id ?? questionnaireBundle.id ?? null}
+            bundle={questionnaireBundle}
+            aiOverall={payload.assessment.ai_overall_assessment ?? null}
+            aiRaw={payload.assessment.ai_subcriteria_suggestions ?? null}
+            locked={locked}
+            editable={editable}
+            state={state}
+            onCellChange={onCellChange}
+            saveSection={saveSection}
+            saving={saving}
+            scoredSubCount={scoredSubCount}
+            totalSubs={totalSubs}
+            activityAssessmentId={assessmentId}
+          />
+          <div className="border-t border-gray-200 bg-[#F3F4F6] px-6 py-6">
+            <AIFollowupQuestionsCard
+              assessmentId={assessmentId}
+              overallScore={displayScore}
+              isScored={assessmentComplete}
+            />
+          </div>
+        </>
       ) : (
         <AssessmentInsightsDashboard
           assessmentId={assessmentId}

@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { Bell, ChevronRight, LogOut } from 'lucide-react';
 import { signOut } from 'next-auth/react';
 
+import { useAssistantOptional } from '@/contexts/AssistantContext';
 import { breadcrumbsFromPathname, titleFromPathname } from '@/lib/navigation';
 import { roleBadgeClass, roleDisplayLabel } from '@/lib/settings/role-visual';
 import { cn } from '@/lib/utils';
@@ -31,6 +32,7 @@ export type TopBarProps = {
 };
 
 export function TopBar({ user, titleOverride }: TopBarProps) {
+  const assistant = useAssistantOptional();
   const pathname = usePathname() ?? '';
   const title = titleOverride?.trim() || titleFromPathname(pathname);
   const crumbs = breadcrumbsFromPathname(pathname);
@@ -50,6 +52,7 @@ export function TopBar({ user, titleOverride }: TopBarProps) {
     pathname.startsWith('/settings/users');
 
   async function handleSignOut() {
+    assistant?.clearSession();
     await signOut({ callbackUrl: '/login' });
   }
 

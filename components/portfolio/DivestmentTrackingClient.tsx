@@ -7,10 +7,10 @@ import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { DivestmentRow } from '@/lib/portfolio/divestments';
-import { DIVESTMENT_TYPES, USD_EQ_RATE, toUsd } from '@/lib/portfolio/divestments';
+import { DIVESTMENT_TYPES, toUsd } from '@/lib/portfolio/divestments';
 import { cn } from '@/lib/utils';
 
-type FundOpt = { id: string; fund_name: string; currency: 'USD' | 'JMD' };
+type FundOpt = { id: string; fund_name: string; currency: 'USD' | 'JMD'; exchange_rate_jmd_usd?: number | null };
 type Payload = {
   divestments: DivestmentRow[];
   summary: {
@@ -141,7 +141,8 @@ export function DivestmentTrackingClient({ initialData, funds }: { initialData: 
       const fund = funds.find((f) => f.id === r.fund_id);
       const key = r.fund_id;
       const row = map.get(key) ?? { name: (fund?.fund_name ?? 'Fund').slice(0, 18), value: 0 };
-      row.value += toUsd(Number(r.proceeds_received), r.currency);
+      const rate = Number(fund?.exchange_rate_jmd_usd ?? 157) || 157;
+      row.value += toUsd(Number(r.proceeds_received), r.currency, rate);
       map.set(key, row);
     }
     return [...map.values()].sort((a, b) => b.value - a.value);

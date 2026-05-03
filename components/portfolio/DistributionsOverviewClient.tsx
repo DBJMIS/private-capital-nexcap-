@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
+
+import { PAGE_SUGGESTED_PROMPTS } from '@/lib/assistant/page-contexts';
+import { useAssistant } from '@/contexts/AssistantContext';
+import { useAuth } from '@/hooks/use-auth';
 import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 import { RETURN_TYPE_BADGES, RETURN_TYPE_LABELS, RETURN_TYPES, type ReturnType } from '@/lib/portfolio/distributions';
@@ -54,6 +58,8 @@ function typeBadge(rt: string) {
 }
 
 export function DistributionsOverviewClient() {
+  const { user, role, isLoading: authLoading } = useAuth();
+  const { setPageContext } = useAssistant();
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [funds, setFunds] = useState<FundSummary[]>([]);
@@ -106,6 +112,41 @@ export function DistributionsOverviewClient() {
     }
     return [...ys].sort((a, b) => b - a);
   }, [all]);
+
+  useEffect(() => {
+    if (authLoading || !user?.user_id || !role) return;
+    if (loading) return;
+    if (err) {
+      setPageContext(null);
+      return;
+    }
+    const totalDistributed = kpi?.total_returned_usd_equiv ?? 0;
+    const distributionCount = all.length;
+    const averageDistribution = distributionCount > 0 ? totalDistributed / distributionCount : 0;
+    const dpi = (kpi?.avg_yield_pct ?? 0) / 100;
+    setPageContext({
+      pageId: 'distributions',
+      pageTitle: 'Distributions & Dividends',
+      userRole: role,
+      userId: user.user_id,
+      data: {
+        totalDistributed,
+        distributionCount,
+        averageDistribution,
+        dpi,
+        distributions: all.map((row) => ({
+          fundName: row.fund_name,
+          date: row.distribution_date,
+          amount: Number(row.amount),
+          type: row.return_type,
+          cumulativeTotal: row.cumulative_total != null ? Number(row.cumulative_total) : 0,
+        })),
+        note: 'dpi is derived from average yield on committed capital across funds (same order of magnitude as money-on-money when commitments are fully drawn).',
+      },
+      suggestedPrompts: PAGE_SUGGESTED_PROMPTS['distributions'],
+    });
+    return () => setPageContext(null);
+  }, [all, authLoading, err, kpi, loading, role, setPageContext, user?.user_id]);
 
   const filteredTable = useMemo(() => {
     return all.filter((row) => {

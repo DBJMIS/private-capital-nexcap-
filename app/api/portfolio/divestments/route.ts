@@ -71,11 +71,19 @@ export async function GET(req: Request) {
   const { data: funds } = fundIds.length
     ? await supabase
         .from('vc_portfolio_funds')
-        .select('id, fund_name')
+        .select('id, fund_name, exchange_rate_jmd_usd')
         .eq('tenant_id', profile.tenant_id)
         .in('id', fundIds)
     : { data: [] };
-  const fundById = new Map((funds ?? []).map((f) => [String((f as { id: string }).id), { fund_name: String((f as { fund_name: string }).fund_name) }]));
+  const fundById = new Map(
+    (funds ?? []).map((f) => [
+      String((f as { id: string }).id),
+      {
+        fund_name: String((f as { fund_name: string }).fund_name),
+        exchange_rate_jmd_usd: (f as { exchange_rate_jmd_usd?: number | null }).exchange_rate_jmd_usd ?? null,
+      },
+    ]),
+  );
 
   return NextResponse.json({
     divestments,

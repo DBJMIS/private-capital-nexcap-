@@ -1755,6 +1755,57 @@ export type Database = {
         };
         Relationships: [];
       };
+      ai_followup_questions: {
+        Row: {
+          id: string;
+          assessment_id: string;
+          fund_id: string | null;
+          section_key: string;
+          section_label: string;
+          section_score: number | null;
+          section_max_score: number | null;
+          question: string;
+          rationale: string | null;
+          used: boolean;
+          used_at: string | null;
+          used_by: string | null;
+          generated_at: string;
+          generation_version: number;
+        };
+        Insert: {
+          id?: string;
+          assessment_id: string;
+          fund_id?: string | null;
+          section_key: string;
+          section_label: string;
+          section_score?: number | null;
+          section_max_score?: number | null;
+          question: string;
+          rationale?: string | null;
+          used?: boolean;
+          used_at?: string | null;
+          used_by?: string | null;
+          generated_at?: string;
+          generation_version?: number;
+        };
+        Update: {
+          id?: string;
+          assessment_id?: string;
+          fund_id?: string | null;
+          section_key?: string;
+          section_label?: string;
+          section_score?: number | null;
+          section_max_score?: number | null;
+          question?: string;
+          rationale?: string | null;
+          used?: boolean;
+          used_at?: string | null;
+          used_by?: string | null;
+          generated_at?: string;
+          generation_version?: number;
+        };
+        Relationships: [];
+      };
       ai_benchmark_narratives: {
         Row: {
           id: string;
@@ -2082,6 +2133,9 @@ export type FundManagerNoteRow = Database['public']['Tables']['fund_manager_note
 
 /** Row shape for `public.ai_relationship_profiles`. */
 export type AiRelationshipProfileRow = Database['public']['Tables']['ai_relationship_profiles']['Row'];
+
+/** Row shape for `public.ai_followup_questions`. */
+export type AiFollowupQuestionRow = Database['public']['Tables']['ai_followup_questions']['Row'];
 
 /** Row shape for `public.vc_fund_snapshots` (Epic 12). */
 export type VcFundSnapshot = Database['public']['Tables']['vc_fund_snapshots']['Row'];

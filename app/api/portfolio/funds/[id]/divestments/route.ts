@@ -21,7 +21,7 @@ export async function GET(_req: Request, ctx: Ctx) {
 
   const { data: fund, error: fErr } = await supabase
     .from('vc_portfolio_funds')
-    .select('id, fund_name')
+    .select('id, fund_name, exchange_rate_jmd_usd')
     .eq('tenant_id', profile.tenant_id)
     .eq('id', fundId)
     .maybeSingle();
@@ -37,7 +37,15 @@ export async function GET(_req: Request, ctx: Ctx) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const divestments = (data ?? []) as DivestmentRow[];
-  const fundById = new Map([[fundId, { fund_name: String((fund as { fund_name: string }).fund_name) }]]);
+  const fundById = new Map([
+    [
+      fundId,
+      {
+        fund_name: String((fund as { fund_name: string }).fund_name),
+        exchange_rate_jmd_usd: (fund as { exchange_rate_jmd_usd?: number | null }).exchange_rate_jmd_usd ?? null,
+      },
+    ],
+  ]);
   return NextResponse.json({
     divestments,
     summary: summarizeDivestments(divestments, fundById),

@@ -44,7 +44,7 @@ export const dealFlowSection: SectionMeta = {
     },
     {
       key: 'pipeline_companies',
-      label: 'Pipeline',
+      label: 'onboarding',
       type: 'pipeline_companies',
       required: true,
       helper:

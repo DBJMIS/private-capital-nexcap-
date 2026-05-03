@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { NextResponse } from 'next/server';
 
+import { sseError } from '@/lib/api/errors';
 import { createServerClient } from '@/lib/supabase/server';
 import { getProfile } from '@/lib/auth/session';
 import { assertQuestionnaireAccess } from '@/lib/questionnaire/assert-questionnaire-access';
@@ -223,10 +224,8 @@ export async function POST(req: Request, ctx: Ctx) {
           identified_gaps: parsed.identified_gaps,
         });
       } catch (err) {
-        send({
-          type: 'error',
-          message: err instanceof Error ? err.message : 'Assistant stream failed',
-        });
+        console.error('[ai-assist/stream]', err);
+        send(sseError('AI assistant encountered an error'));
       } finally {
         controller.close();
       }

@@ -10,7 +10,9 @@ import {
   BarChart2,
   Building2,
   Calendar,
+  CheckSquare,
   ChevronDown,
+  ClipboardCheck,
   ClipboardList,
   Eye,
   FileText,
@@ -70,11 +72,14 @@ const PIPELINE_ITEMS: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, moduleId: 'pipeline_dashboard' },
   { label: 'Calls for Proposals', href: '/cfp', icon: Megaphone, moduleId: 'cfp' },
   { label: 'Fund Applications', href: '/fund-applications', icon: FileText, moduleId: 'fund_applications' },
-  { label: 'DD Questionnaires', href: '/dd-questionnaires', icon: ClipboardList, moduleId: 'dd_questionnaires' },
+  { label: 'DD Questionnaires', href: '/questionnaires', icon: ClipboardList, moduleId: 'dd_questionnaires' },
   { label: 'Assessments & Scoring', href: '/assessments', icon: Star, moduleId: 'assessments' },
 ];
 
 const OPERATIONS_ITEMS: NavItem[] = [
+  { label: 'Tasks', href: '/tasks', icon: CheckSquare, moduleId: 'tasks' },
+  { label: 'Approvals', href: '/approvals', icon: ClipboardCheck, moduleId: 'approvals' },
+  { label: 'Reports', href: '/reports', icon: BarChart2, moduleId: 'reports' },
   { label: 'Settings', href: '/settings', icon: Settings, moduleId: 'settings' },
   { label: 'Role Management', href: '/settings/roles', icon: Shield, moduleId: 'settings' },
   { label: 'User Management', href: '/settings/users', icon: Users, moduleId: 'user_management' },
@@ -97,8 +102,11 @@ function isActive(pathname: string, href: string): boolean {
     '/portfolio/executive',
     '/cfp',
     '/fund-applications',
-    '/dd-questionnaires',
+    '/questionnaires',
     '/assessments',
+    '/tasks',
+    '/approvals',
+    '/reports',
     '/settings/roles',
     '/settings/users',
   ]);
@@ -121,6 +129,9 @@ export function Sidebar({ user, collapsed: _collapsed, onToggleCollapsed: _onTog
   };
   const [openSection, setOpenSection] = useState<OpenSection>('portfolio');
   const canManageUsers = role === 'admin' || role === 'it_admin';
+  // TODO: fund_manager role currently falls through all section gates and sees an empty sidebar.
+  // Fund managers use /onboarding and /application-status only. If a fund manager portal sidebar
+  // is needed, add a dedicated canSeeFundManager gate here. Needs product decision before implementing.
   const canSeePortfolio = role === 'admin' || role === 'pctu_officer' || role === 'senior_management' || role === 'portfolio_manager';
   const canSeePipeline = role === 'admin' || role === 'investment_officer' || role === 'panel_member' || role === 'portfolio_manager';
   const canSeeOperations = role === 'admin' || role === 'it_admin';
@@ -189,7 +200,13 @@ export function Sidebar({ user, collapsed: _collapsed, onToggleCollapsed: _onTog
   useEffect(() => {
     if (hasPortfolioNav && pathname.startsWith('/portfolio')) {
       setOpenSection('portfolio');
-    } else if (hasOperationsNav && pathname.startsWith('/settings')) {
+    } else if (
+      hasOperationsNav &&
+      (pathname.startsWith('/settings') ||
+        pathname.startsWith('/tasks') ||
+        pathname.startsWith('/approvals') ||
+        pathname.startsWith('/reports'))
+    ) {
       setOpenSection('operations');
     } else if (pathname === '/' || pathname === '/dashboard') {
       const next = pickDefaultOpenSection();
@@ -198,7 +215,7 @@ export function Sidebar({ user, collapsed: _collapsed, onToggleCollapsed: _onTog
       hasPipelineNav &&
       (pathname.startsWith('/cfp') ||
         pathname.startsWith('/fund-applications') ||
-        pathname.startsWith('/dd-questionnaires') ||
+        pathname.startsWith('/questionnaires') ||
         pathname.startsWith('/assessments') ||
         (pathname.startsWith('/dashboard') && pathname !== '/dashboard'))
     ) {
@@ -247,7 +264,7 @@ export function Sidebar({ user, collapsed: _collapsed, onToggleCollapsed: _onTog
 
         {visiblePipelineItems.length > 0 ? (
           <Section
-            title="Pipeline"
+            title="onboarding"
             open={openSection === 'pipeline'}
             onToggle={() => toggle('pipeline')}
             maxHeightClass="max-h-[400px]"
@@ -265,7 +282,7 @@ export function Sidebar({ user, collapsed: _collapsed, onToggleCollapsed: _onTog
             title="Operations"
             open={openSection === 'operations'}
             onToggle={() => toggle('operations')}
-            maxHeightClass="max-h-[200px]"
+            maxHeightClass="max-h-[400px]"
           >
             {visibleOperationsItems.map((item) => (
               <NavItemLink key={item.href} item={item} active={isActive(pathname, item.href)} />

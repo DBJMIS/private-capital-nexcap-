@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { logAndReturn } from '@/lib/api/errors';
 import { getStructuredListApiContext } from '@/lib/questionnaire/structured-list-api-context';
 import { insertStructuredListRow, loadStructuredListRows } from '@/lib/questionnaire/structured-list-db';
 
@@ -16,7 +17,7 @@ export async function GET(_req: Request, ctx: Ctx) {
     const rows = await loadStructuredListRows(ctxRes.db, ctxRes.tenantId, questionnaireId, 'contact_persons');
     return NextResponse.json({ rows });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'Load failed' }, { status: 500 });
+    return logAndReturn(e, 'questionnaires/contact-persons/load', 'INTERNAL_ERROR', 'Failed to load contact persons', 500);
   }
 }
 

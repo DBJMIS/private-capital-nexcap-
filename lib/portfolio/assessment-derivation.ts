@@ -8,7 +8,11 @@ import {
   deriveFundLifecycleStage,
   deriveRecommendation,
 } from '@/lib/portfolio/assessment-scoring';
-import { buildCashFlowsForXirr, computeFundPerformanceMetrics } from '@/lib/portfolio/fund-performance-metrics';
+import {
+  buildCashFlowsForXirr,
+  calledThroughDate,
+  computeFundPerformanceMetrics,
+} from '@/lib/portfolio/fund-performance-metrics';
 import type {
   DimensionKey,
   DimensionReasoning,
@@ -70,8 +74,9 @@ export function deriveFinancialPerformance(params: {
   latestSnapshot: VcFundSnapshot | null;
   capitalCalls: VcCapitalCall[];
   distributions: VcDistribution[];
+  assessmentDate: string;
 }): DimensionResult {
-  const { fund, latestSnapshot, capitalCalls, distributions } = params;
+  const { fund, latestSnapshot, capitalCalls, distributions, assessmentDate } = params;
   const factors: DimensionReasoning['factors'] = [];
   let score = 50;
   let confidence: Level = 'high';
@@ -130,7 +135,9 @@ export function deriveFinancialPerformance(params: {
   score += adj;
 
   adj = 0;
-  const deployedPct = fund.dbj_commitment > 0 ? (called / Number(fund.dbj_commitment)) * 100 : 0;
+  const calledThroughAssessment = calledThroughDate(capitalCalls, assessmentDate);
+  const deployedPct =
+    fund.dbj_commitment > 0 ? (calledThroughAssessment / Number(fund.dbj_commitment)) * 100 : 0;
   if (deployedPct > 80) adj = 5;
   else if (deployedPct < 50) {
     const ageY = (new Date(asOf).getTime() - new Date(`${fund.commitment_date}T12:00:00`).getTime()) / (365.25 * 86400000);
@@ -246,13 +253,20 @@ export function deriveComplianceGovernance(params: { obligations: VcReportingObl
   }));
   const factors: DimensionReasoning['factors'] = byType.map(({ t, rows }) => {
     const total = rows.length;
-    const good = rows.filter((r) => ['submitted', 'under_review', 'accepted'].includes(r.status)).length;
-    const pct = total === 0 ? 0 : (good / total) * 100;
+    const cleared = rows.filter((r) => {
+      const st = (r.status ?? '').toLowerCase();
+      return st === 'accepted' || st === 'waived';
+    }).length;
+    const pendingReview = rows.filter((r) => {
+      const st = (r.status ?? '').toLowerCase();
+      return st === 'submitted' || st === 'under_review';
+    }).length;
+    const pct = total === 0 ? 0 : (cleared / total) * 100;
     return {
       label: t,
-      value: `${good}/${total} (${pct.toFixed(1)}%)`,
+      value: `${cleared}/${total} cleared (${pct.toFixed(1)}%); ${pendingReview} pending review`,
       adjustment: 0,
-      detail: 'Compliance rate by report type',
+      detail: 'Accepted or waived count toward the compliance score; submitted or under review are pending',
     };
   });
   return {
@@ -270,8 +284,10 @@ export function derivePortfolioHealth(params: {
   distributions: VcDistribution[];
   latestSnapshot: VcFundSnapshot | null;
   narrativeExtract: VcFundNarrativeExtract | null;
+  assessmentDate: string;
 }): DimensionResult {
-  const { fund, capitalCallItems, capitalCalls, distributions, latestSnapshot, narrativeExtract } = params;
+  const { fund, capitalCallItems, capitalCalls, distributions, latestSnapshot, narrativeExtract, assessmentDate } =
+    params;
   const ind = indicators(narrativeExtract);
   const factors: DimensionReasoning['factors'] = [];
   let score = 50;
@@ -284,7 +300,9 @@ export function derivePortfolioHealth(params: {
   score += adj;
 
   const called = capitalCalls.reduce((s, c) => s + Number(c.call_amount ?? 0), 0);
-  const deployedPct = fund.dbj_commitment > 0 ? (called / Number(fund.dbj_commitment)) * 100 : 0;
+  const calledThroughAssessment = calledThroughDate(capitalCalls, assessmentDate);
+  const deployedPct =
+    fund.dbj_commitment > 0 ? (calledThroughAssessment / Number(fund.dbj_commitment)) * 100 : 0;
   const ageYears = (new Date((latestSnapshot?.snapshot_date ?? new Date().toISOString().slice(0, 10)) + 'T12:00:00').getTime() - new Date(`${fund.commitment_date}T12:00:00`).getTime()) / (365.25 * 86400000);
   adj = 0;
   if (deployedPct < 40 && ageYears > 3) adj = -10;
@@ -336,6 +354,7 @@ export async function deriveAssessment(params: {
     latestSnapshot: params.latestSnapshot,
     capitalCalls: params.capitalCalls,
     distributions: params.distributions,
+    assessmentDate: params.assessmentDate,
   });
   const impact = deriveDevelopmentImpact({ fund: params.fund, narrativeExtract: params.narrativeExtract });
   const management = deriveFundManagement({
@@ -350,6 +369,7 @@ export async function deriveAssessment(params: {
     distributions: params.distributions,
     latestSnapshot: params.latestSnapshot,
     narrativeExtract: params.narrativeExtract,
+    assessmentDate: params.assessmentDate,
   });
 
   const dimensions: Record<DimensionKey, DimensionResult> = {

@@ -31,6 +31,64 @@ type RelationshipProfile = {
   last_updated: string;
 };
 
+type AssessmentSummaryRow = { id: string; completed_at: string | null };
+type FollowupHistoryRow = {
+  assessment_id: string;
+  section_label: string;
+  section_score: number | null;
+  section_max_score: number | null;
+  used: boolean | null;
+  generated_at: string;
+};
+
+function buildFollowUpQuestionHistoryBlock(
+  assessments: AssessmentSummaryRow[],
+  followups: FollowupHistoryRow[],
+): string {
+  if (!followups.length) {
+    return 'No AI follow-up questions recorded for this manager\'s DD assessments.';
+  }
+
+  const byAssessment = new Map<string, FollowupHistoryRow[]>();
+  for (const f of followups) {
+    const arr = byAssessment.get(f.assessment_id) ?? [];
+    arr.push(f);
+    byAssessment.set(f.assessment_id, arr);
+  }
+
+  const weakSectionCounts = new Map<string, number>();
+  for (const f of followups) {
+    const max = Number(f.section_max_score ?? 0);
+    const sc = Number(f.section_score ?? 0);
+    if (max <= 0) continue;
+    const pct = (sc / max) * 100;
+    if (pct < 60) {
+      weakSectionCounts.set(f.section_label, (weakSectionCounts.get(f.section_label) ?? 0) + 1);
+    }
+  }
+  const persistentGaps = [...weakSectionCounts.entries()].filter(([, n]) => n >= 2).map(([label]) => label);
+
+  const blocks: string[] = [];
+  for (const a of assessments) {
+    const qs = byAssessment.get(a.id);
+    if (!qs?.length) continue;
+    const subDate = a.completed_at ?? qs[0]?.generated_at ?? '';
+    const genCount = qs.length;
+    const usedCount = qs.filter((x) => x.used === true).length;
+    blocks.push(
+      `Submission date: ${subDate}\nQuestions generated: ${genCount}\nQuestions used in meetings: ${usedCount}`,
+    );
+  }
+
+  blocks.push(
+    `Sections with persistent gaps (scored below 60% on multiple submissions): ${
+      persistentGaps.length ? persistentGaps.join(', ') : 'none identified'
+    }`,
+  );
+
+  return blocks.join('\n\n');
+}
+
 function parseProfile(text: string): RelationshipProfile | null {
   const cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
   const candidates = [cleaned];
@@ -131,7 +189,7 @@ export async function POST(req: Request) {
     applicationIds.length
       ? supabase
           .from('vc_assessments')
-          .select('application_id, overall_weighted_score, recommendation, status, completed_at, updated_at')
+          .select('id, application_id, overall_weighted_score, recommendation, status, completed_at, updated_at')
           .eq('tenant_id', manager.tenant_id)
           .in('application_id', applicationIds)
       : Promise.resolve({ data: [], error: null }),
@@ -177,6 +235,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: errors[0]?.message ?? 'Failed loading manager context' }, { status: 500 });
   }
 
+  const assessmentRows = (assessmentsRes.data ?? []) as AssessmentSummaryRow[];
+  const assessmentIds = assessmentRows.map((a) => a.id).filter(Boolean);
+
+  let followupsRes: { data: FollowupHistoryRow[] | null; error: { message: string } | null } = {
+    data: [],
+    error: null,
+  };
+  if (assessmentIds.length > 0) {
+    const fr = await supabase
+      .from('ai_followup_questions')
+      .select('assessment_id, section_label, section_score, section_max_score, used, generated_at')
+      .in('assessment_id', assessmentIds);
+    followupsRes = {
+      data: (fr.data ?? []) as FollowupHistoryRow[],
+      error: fr.error,
+    };
+  }
+  if (followupsRes.error) {
+    return NextResponse.json({ error: followupsRes.error.message }, { status: 500 });
+  }
+
+  const followUpHistoryBlock = buildFollowUpQuestionHistoryBlock(assessmentRows, followupsRes.data ?? []);
+
   const timeline: TimelineEvent[] = [];
   if (manager.first_contact_date) {
     timeline.push({ date: manager.first_contact_date, event: 'First contact', outcome: 'Relationship initiated' });
@@ -220,10 +301,11 @@ export async function POST(req: Request) {
       divestments: divestmentsRes.data ?? [],
       staff_notes: notesRes.data ?? [],
       timeline,
+      ai_followup_questions_summary: followupsRes.data ?? [],
     },
     null,
     2,
-  )}\n\nReturn JSON only:\n{\n  "summary": "2-3 sentence overview of the manager and DBJ's relationship",\n  "strengths": ["..."],\n  "concerns": ["..."],\n  "interaction_timeline": [{ "date": "", "event": "", "outcome": "" }],\n  "dd_history": { "submissions": 0, "avg_score": 0, "highest_score": 0, "sections_consistently_weak": [] },\n  "relationship_health": "STRONG | DEVELOPING | STRAINED | INACTIVE",\n  "recommended_next_steps": ["..."],\n  "data_gaps": ["..."],\n  "last_updated": ""\n}`;
+  )}\n\nFOLLOW-UP QUESTION HISTORY:\n${followUpHistoryBlock}\n\nReturn JSON only:\n{\n  "summary": "2-3 sentence overview of the manager and DBJ's relationship",\n  "strengths": ["..."],\n  "concerns": ["..."],\n  "interaction_timeline": [{ "date": "", "event": "", "outcome": "" }],\n  "dd_history": { "submissions": 0, "avg_score": 0, "highest_score": 0, "sections_consistently_weak": [] },\n  "relationship_health": "STRONG | DEVELOPING | STRAINED | INACTIVE",\n  "recommended_next_steps": ["..."],\n  "data_gaps": ["..."],\n  "last_updated": ""\n}`;
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   const model = process.env.ANTHROPIC_MODEL?.trim() || 'claude-sonnet-4-20250514';
@@ -290,7 +372,8 @@ export async function POST(req: Request) {
     (quarterlyRes.data?.length ?? 0) +
     (siteVisitsRes.data?.length ?? 0) +
     (divestmentsRes.data?.length ?? 0) +
-    (notesRes.data?.length ?? 0);
+    (notesRes.data?.length ?? 0) +
+    (followupsRes.data?.length ?? 0);
 
   const profilePayload: RelationshipProfile = {
     ...parsed,

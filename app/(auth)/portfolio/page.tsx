@@ -4,6 +4,8 @@ import { AlertCircle, Building2, DollarSign, ShieldCheck } from 'lucide-react';
 
 import type { PortfolioDashboardChartsProps } from './PortfolioDashboardCharts.client';
 import { PortfolioIntelligenceCard } from './PortfolioIntelligenceCard.client';
+import type { PortfolioDashboardAssistantPayload } from '@/components/portfolio/PortfolioDashboardAssistantBridge';
+import { PortfolioAssistantGateClient } from './PortfolioAssistantGate.client';
 import { loadComplianceFundRows } from '@/lib/portfolio/compliance-fund-rows';
 import { createServerClient } from '@/lib/supabase/server';
 import { getProfile, requireAuth } from '@/lib/auth/session';
@@ -82,8 +84,10 @@ function toUsdFromNested(currency: string, dbjCommitment: number, exchangeRateJm
 
 type NestedObligation = { status: string; due_date: string; report_type?: string };
 type NestedFund = {
+  id: string;
   currency: string;
   dbj_commitment: number | string;
+  fund_status?: string;
   exchange_rate_jmd_usd?: number | string | null;
   vc_reporting_obligations?: NestedObligation[] | null;
 };
@@ -120,7 +124,7 @@ export default async function PortfolioPage() {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
 
-  const [{ funds, rows, error }, aiNarrativeRes] = await Promise.all([
+  const [{ funds, rows, error }, aiNarrativeRes, wlRes] = await Promise.all([
     loadComplianceFundRows(supabase, profile.tenant_id),
     supabase
       .from('ai_benchmark_narratives')
@@ -131,6 +135,7 @@ export default async function PortfolioPage() {
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
+    supabase.from('vc_watchlist').select('fund_id').eq('tenant_id', profile.tenant_id),
   ]);
   const complianceRows = rows;
 
@@ -140,6 +145,10 @@ export default async function PortfolioPage() {
 
   const nestedFunds = (funds ?? []) as NestedFund[];
   const activeFunds = complianceRows.length;
+  const watchFundIds = new Set(
+    (wlRes.error ? [] : (wlRes.data ?? [])).map((r) => String((r as { fund_id: string }).fund_id)),
+  );
+  const nestedById = new Map(nestedFunds.map((f) => [f.id, f]));
 
   let totalUsdCommitted = 0;
   for (const f of nestedFunds) {
@@ -276,6 +285,44 @@ export default async function PortfolioPage() {
     : null;
   const canRegenerate = profile.role === 'it_admin' || profile.role === 'portfolio_manager' || can(profile, 'write:applications');
 
+  const assistantPayload: PortfolioDashboardAssistantPayload = {
+    totalFunds: activeFunds,
+    totalCommittedCapital: totalUsdCommitted,
+    totalCalledCapital: null,
+    totalDistributions: null,
+    totalNAV: null,
+    deploymentRate: null,
+    averageMOIC: null,
+    averageIRR: null,
+    fundsOnWatchlist: watchFundIds.size,
+    complianceOverdue: overdueReportsCount,
+    fundsDueInNext14Days: dueInNext14,
+    fullyCompliantFunds: fullyCompliant,
+    fundsNeedingAttention: needAttention,
+    funds: complianceRows.map((r) => {
+      const nf = nestedById.get(r.fund_id);
+      const committedUsd = nf
+        ? toUsdFromNested(
+            String(nf.currency ?? 'USD'),
+            Number(nf.dbj_commitment),
+            nf.exchange_rate_jmd_usd != null ? Number(nf.exchange_rate_jmd_usd) : null,
+          )
+        : toUsdFromNested(String(r.currency ?? 'USD'), Number(r.dbj_commitment), null);
+      return {
+        name: r.fund_name,
+        committedCapital: committedUsd,
+        calledCapital: null,
+        distributions: null,
+        nav: null,
+        moic: null,
+        irr: null,
+        status: nf?.fund_status ?? r.compliance_status,
+        onWatchlist: watchFundIds.has(r.fund_id),
+      };
+    }),
+    note: 'Aggregated performance multiples and paid-in capital breakdown are not shown on this dashboard; open a fund for detail.',
+  };
+
   return (
     <div className="w-full space-y-8">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -331,6 +378,8 @@ export default async function PortfolioPage() {
       <PortfolioIntelligenceCard initial={initialIntelligence} canRegenerate={canRegenerate} />
 
       <PortfolioDashboardCharts {...chartProps} />
+
+      <PortfolioAssistantGateClient payload={assistantPayload} />
     </div>
   );
 }

@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 
+import { PAGE_SUGGESTED_PROMPTS } from '@/lib/assistant/page-contexts';
+import { useAssistant } from '@/contexts/AssistantContext';
+import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
 
 type FundSummary = {
@@ -114,6 +117,8 @@ function noticeStatusPill(status: string) {
 
 export function CapitalCallsOverviewClient() {
   const router = useRouter();
+  const { user, role, isLoading: authLoading } = useAuth();
+  const { setPageContext } = useAssistant();
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [funds, setFunds] = useState<FundSummary[]>([]);
@@ -169,6 +174,41 @@ export function CapitalCallsOverviewClient() {
       fundsWithCalls,
     };
   }, [funds, recent]);
+
+  useEffect(() => {
+    if (authLoading || !user?.user_id || !role) return;
+    if (loading) return;
+    if (err) {
+      setPageContext(null);
+      return;
+    }
+    const callCount = funds.reduce((s, f) => s + f.total_calls, 0);
+    const overdueCount = recent.filter((c) => c.status.toLowerCase() === 'overdue').length;
+    setPageContext({
+      pageId: 'capital-calls',
+      pageTitle: 'Capital Calls',
+      userRole: role,
+      userId: user.user_id,
+      data: {
+        totalCalled: kpi.total_called_usd_equiv,
+        totalOutstanding: kpi.total_remaining_usd_equiv,
+        callCount,
+        overdueCount,
+        unpaidCallsCount: kpi.unpaid_calls_count,
+        calls: recent.map((c) => ({
+          fundName: c.fund_name,
+          callNumber: c.notice_number,
+          amount: c.call_amount,
+          dueDate: c.date_of_notice,
+          status: c.status,
+          paidDate: null,
+        })),
+        note: 'Recent notices list shows the latest 10 notices across the portfolio (not the full history). Amounts may be in fund native currency; headline KPIs are USD equivalent.',
+      },
+      suggestedPrompts: PAGE_SUGGESTED_PROMPTS['capital-calls'],
+    });
+    return () => setPageContext(null);
+  }, [authLoading, err, funds, kpi, loading, recent, role, setPageContext, user?.user_id]);
 
   useEffect(() => {
     let cancelled = false;

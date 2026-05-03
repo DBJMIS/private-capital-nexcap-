@@ -24,7 +24,7 @@ export default async function DivestmentPage() {
       .order('completion_date', { ascending: false }),
     supabase
       .from('vc_portfolio_funds')
-      .select('id, fund_name, currency')
+      .select('id, fund_name, currency, exchange_rate_jmd_usd')
       .eq('tenant_id', profile.tenant_id)
       .eq('fund_status', 'active')
       .order('fund_name'),
@@ -33,8 +33,15 @@ export default async function DivestmentPage() {
   if (fundRes.error) return <p className="text-sm text-red-700">Error loading funds: {fundRes.error.message}</p>;
 
   const divestments = (divRes.data ?? []) as DivestmentRow[];
-  const funds = (fundRes.data ?? []) as Array<{ id: string; fund_name: string; currency: 'USD' | 'JMD' }>;
-  const fundById = new Map(funds.map((f) => [f.id, { fund_name: f.fund_name }]));
+  const funds = (fundRes.data ?? []) as Array<{
+    id: string;
+    fund_name: string;
+    currency: 'USD' | 'JMD';
+    exchange_rate_jmd_usd: number | null;
+  }>;
+  const fundById = new Map(
+    funds.map((f) => [f.id, { fund_name: f.fund_name, exchange_rate_jmd_usd: f.exchange_rate_jmd_usd }]),
+  );
 
   return (
     <DivestmentTrackingClient

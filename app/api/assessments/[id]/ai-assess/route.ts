@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { NextResponse } from 'next/server';
 
+import { logAndReturn } from '@/lib/api/errors';
 import {
   buildDdAiAssessUserPrompt,
   DD_AI_ASSESS_SYSTEM,
@@ -101,9 +102,12 @@ export async function POST(_req: Request, ctx: Ctx) {
     });
     text = msg.content.find((c) => c.type === 'text' && 'text' in c)?.text ?? '';
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'Claude request failed' },
-      { status: 502 },
+    return logAndReturn(
+      e,
+      'assessments/ai-assess',
+      'UPSTREAM_ERROR',
+      'AI assessment service unavailable — please retry',
+      502,
     );
   }
 

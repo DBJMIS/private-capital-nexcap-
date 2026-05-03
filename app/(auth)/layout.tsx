@@ -4,6 +4,7 @@ import { createServerClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 import { getProfile, getSession, requireAuth } from '@/lib/auth/session';
+import { AssistantLayoutRoot } from '@/components/assistant/AssistantLayoutRoot';
 import { AuthenticatedShell } from '@/components/layout/AuthenticatedShell';
 
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
@@ -37,17 +38,19 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
   }
 
   return (
-    <AuthenticatedShell
-      tenantName={tenantName}
-      user={{
-        name: profile.full_name,
-        email: profile.email,
-        role: profile.role ?? 'viewer',
-        allowedModules: session?.user?.allowedModules ?? [],
-      }}
-      watchlistCount={watchlistCount}
-    >
-      {children}
-    </AuthenticatedShell>
+    <AssistantLayoutRoot>
+      <AuthenticatedShell
+        tenantName={tenantName}
+        user={{
+          name: profile.full_name,
+          email: profile.email,
+          role: profile.role ?? 'viewer',
+          allowedModules: session?.user?.allowedModules ?? [],
+        }}
+        watchlistCount={watchlistCount}
+      >
+        {children}
+      </AuthenticatedShell>
+    </AssistantLayoutRoot>
   );
 }

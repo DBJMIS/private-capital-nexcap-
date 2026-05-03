@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { NextResponse } from 'next/server';
 
+import { logAndReturn, sseError } from '@/lib/api/errors';
 import { createServerClient } from '@/lib/supabase/server';
 import { getProfile } from '@/lib/auth/session';
 import { ONBOARDING_JSON_DELIMITER, ONBOARDING_SYSTEM_PROMPT } from '@/lib/onboarding/constants';
@@ -104,10 +105,8 @@ ${JSON.stringify(current_application)}`,
             missing_fields: payload?.missing_fields ?? [],
           });
         } catch (err) {
-          send({
-            type: 'error',
-            message: err instanceof Error ? err.message : 'Assistant stream failed',
-          });
+          console.error('[onboarding/chat/stream]', err);
+          send(sseError('Chat assistant encountered an error'));
         } finally {
           controller.close();
         }
@@ -122,9 +121,12 @@ ${JSON.stringify(current_application)}`,
       },
     });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'Chat failed' },
-      { status: 500 },
+    return logAndReturn(
+      e,
+      'onboarding/chat',
+      'INTERNAL_ERROR',
+      'Chat service unavailable — please try again',
+      500,
     );
   }
 }

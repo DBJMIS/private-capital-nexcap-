@@ -1,5 +1,3 @@
-export const USD_EQ_RATE = 157;
-
 export const DIVESTMENT_TYPES = [
   'full_exit',
   'partial_exit',
@@ -46,14 +44,16 @@ export type DivestmentSummary = {
   by_fund: Array<{ fund_id: string; fund_name: string; count: number; total_proceeds: number }>;
 };
 
-export function toUsd(amount: number, currency: 'USD' | 'JMD'): number {
-  if (currency === 'JMD') return amount / USD_EQ_RATE;
+export type DivestmentFundMeta = { fund_name: string; exchange_rate_jmd_usd?: number | null };
+
+export function toUsd(amount: number, currency: 'USD' | 'JMD', rate = 157): number {
+  if (currency === 'JMD') return amount / rate;
   return amount;
 }
 
 export function summarizeDivestments(
   rows: DivestmentRow[],
-  fundsById: Map<string, { fund_name: string }>,
+  fundsById: Map<string, DivestmentFundMeta>,
 ): DivestmentSummary {
   const total_exits = rows.filter((r) => r.status === 'completed').length;
   let total_proceeds_usd = 0;
@@ -64,7 +64,8 @@ export function summarizeDivestments(
 
   for (const row of rows) {
     by_type[row.divestment_type] = (by_type[row.divestment_type] ?? 0) + 1;
-    total_proceeds_usd += toUsd(Number(row.proceeds_received ?? 0), row.currency);
+    const jmdRate = fundsById.get(row.fund_id)?.exchange_rate_jmd_usd ?? 157;
+    total_proceeds_usd += toUsd(Number(row.proceeds_received ?? 0), row.currency, jmdRate);
 
     if (row.multiple_on_invested_capital != null && Number(row.original_investment_amount) > 0) {
       const invested = Number(row.original_investment_amount);

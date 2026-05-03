@@ -33,7 +33,10 @@ export async function GET(req: NextRequest) {
   }
 
   if (!graphRes.ok || !graphRes.body) {
-    return NextResponse.json({ error: 'Unable to load avatar' }, { status: 502 });
+    return new NextResponse(null, {
+      status: 404,
+      headers: { 'Cache-Control': 'private, max-age=3600' },
+    });
   }
 
   return new NextResponse(graphRes.body, {

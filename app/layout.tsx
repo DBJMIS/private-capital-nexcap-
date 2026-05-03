@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { getServerSession } from 'next-auth';
 
+import { AssistantRootProviders } from '@/components/assistant/AssistantRootProviders';
 import { AuthSessionProvider } from '@/components/auth/AuthSessionProvider';
 import { authOptions } from '@/lib/auth-options';
 import './globals.css';
@@ -21,7 +22,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en" className={inter.variable}>
       <body className="min-h-screen font-sans antialiased">
-        <AuthSessionProvider session={session}>{children}</AuthSessionProvider>
+        <AuthSessionProvider session={session}>
+          <AssistantRootProviders>{children}</AssistantRootProviders>
+        </AuthSessionProvider>
       </body>
     </html>
   );

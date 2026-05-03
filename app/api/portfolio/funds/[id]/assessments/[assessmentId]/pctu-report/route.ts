@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { Browser } from 'puppeteer-core';
 
+import { logAndReturn } from '@/lib/api/errors';
 import { assemblePctuReportData } from '@/lib/portfolio/pctu-report-data';
 import { getProfile, requireAuth } from '@/lib/auth/session';
 import { can } from '@/lib/auth/permissions';
@@ -40,7 +41,13 @@ export async function GET(req: Request, ctx: Ctx) {
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to build report';
       if (msg.includes('approved')) {
-        return NextResponse.json({ error: msg }, { status: 400 });
+        return logAndReturn(
+          e,
+          'pctu-report/build',
+          'VALIDATION_ERROR',
+          'Report cannot be generated — assessment not in approved state',
+          400,
+        );
       }
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
@@ -105,8 +112,6 @@ export async function GET(req: Request, ctx: Ctx) {
       }
     }
   } catch (e) {
-    const detail = e instanceof Error ? e.message : String(e);
-    console.error('[pctu-report]', detail);
-    return NextResponse.json({ error: 'PDF generation failed', detail }, { status: 500 });
+    return logAndReturn(e, 'pctu-report/pdf-generation', 'PDF_ERROR', 'PDF generation failed — please try again', 500);
   }
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { logAndReturn } from '@/lib/api/errors';
 import { fetchAuditLogsTenantAdmin } from '@/lib/audit/fetch';
 import { createServerClient } from '@/lib/supabase/server';
 import { getProfile } from '@/lib/auth/session';
@@ -28,7 +29,6 @@ export async function GET(req: Request) {
     const events = await fetchAuditLogsTenantAdmin(supabase, profile.tenant_id, limit, offset);
     return NextResponse.json({ events, limit, offset });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Failed to load audit';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return logAndReturn(e, 'audit/list', 'INTERNAL_ERROR', 'Failed to load audit log', 500);
   }
 }

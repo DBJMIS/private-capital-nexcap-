@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
+import { logAndReturn } from '@/lib/api/errors';
 import { createServerClient } from '@/lib/supabase/server';
 import { getProfile, requireAuth } from '@/lib/auth/session';
 import { can } from '@/lib/auth/permissions';
@@ -126,7 +127,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
   try {
     await syncCumulativeTotals(profile.tenant_id, fundId);
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed to update cumulative totals' }, { status: 500 });
+    return logAndReturn(e, 'distributions/cumulative-totals', 'INTERNAL_ERROR', 'Failed to update distribution', 500);
   }
 
   const { data: updated, error: rErr } = await supabase
@@ -173,7 +174,7 @@ export async function DELETE(_req: Request, ctx: Ctx) {
   try {
     await syncCumulativeTotals(profile.tenant_id, fundId);
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed to update cumulative totals' }, { status: 500 });
+    return logAndReturn(e, 'distributions/cumulative-totals-2', 'INTERNAL_ERROR', 'Failed to update distribution', 500);
   }
 
   return NextResponse.json({ deleted: true });

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { logAndReturn } from '@/lib/api/errors';
 import { getProfile, requireAuth } from '@/lib/auth/session';
 import { can } from '@/lib/auth/permissions';
 import { createServerClient } from '@/lib/supabase/server';
@@ -218,9 +219,12 @@ export async function POST(req: Request, ctx: Ctx) {
   } catch (e) {
     await supabase.from('vc_portfolio_funds').delete().eq('tenant_id', profile.tenant_id).eq('id', (portfolioFund as { id: string }).id);
     await supabase.from('vc_commitments').delete().eq('tenant_id', profile.tenant_id).eq('id', commitmentRow.id);
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'Failed to generate reporting obligations' },
-      { status: 500 },
+    return logAndReturn(
+      e,
+      'commitment/reporting-obligations',
+      'INTERNAL_ERROR',
+      'Failed to process commitment',
+      500,
     );
   }
 

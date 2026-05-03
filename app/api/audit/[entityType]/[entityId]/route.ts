@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { logAndReturn } from '@/lib/api/errors';
 import {
   fetchAuditLogsForAssessment,
   fetchAuditLogsForDdQuestionnaire,
@@ -56,7 +57,6 @@ export async function GET(_req: Request, ctx: Ctx) {
     }
     return NextResponse.json({ events });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Failed to load audit';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return logAndReturn(e, 'audit/entity', 'INTERNAL_ERROR', 'Failed to load audit log', 500);
   }
 }

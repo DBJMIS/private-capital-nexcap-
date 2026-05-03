@@ -19,8 +19,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { FundObligationOverview } from '@/lib/portfolio/fund-obligation-overview';
 import { fundCategoryBadgeClassName, fundCategoryLabel } from '@/lib/portfolio/fund-category';
-import type { PortfolioFundRow } from '@/lib/portfolio/types';
+import type { PortfolioFundRow, WatchlistFundRow } from '@/lib/portfolio/types';
 import type { Json } from '@/types/database';
+import { PAGE_SUGGESTED_PROMPTS } from '@/lib/assistant/page-contexts';
+import { useAssistant } from '@/contexts/AssistantContext';
+import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
 
 type Obligation = {
@@ -182,6 +185,129 @@ export function FundDetailClient({
   const recent = hydration.recent;
   const docs = hydration.documentRows;
   const years = hydration.reportingYears;
+
+  const { user, role, isLoading: authLoading } = useAuth();
+  const { setPageContext } = useAssistant();
+
+  useEffect(() => {
+    if (authLoading || !user?.user_id || !role) return;
+    let cancelled = false;
+
+    const openStatuses = new Set(['due', 'outstanding', 'pending', 'overdue']);
+    let nextObligationDue: string | null = null;
+    for (const o of reportingRows) {
+      if (!openStatuses.has((o.status ?? '').toLowerCase())) continue;
+      if (!nextObligationDue || o.due_date < nextObligationDue) nextObligationDue = o.due_date;
+    }
+
+    (async () => {
+      try {
+        const [perfRes, callsRes, distRes, wlRes] = await Promise.all([
+          fetch(`/api/portfolio/funds/${fund.id}/performance`),
+          fetch(`/api/portfolio/funds/${fund.id}/capital-calls`),
+          fetch(`/api/portfolio/funds/${fund.id}/distributions`),
+          fetch('/api/portfolio/watchlist'),
+        ]);
+        if (cancelled) return;
+        if (!perfRes.ok || !callsRes.ok || !distRes.ok || !wlRes.ok) {
+          setPageContext(null);
+          return;
+        }
+        const perfJson = (await perfRes.json()) as {
+          latest_metrics?: { dpi: number | null; moic: number | null; calculated_irr: number | null } | null;
+          total_called?: number;
+          total_distributed?: number;
+          nav?: number | null;
+          reported_irr?: number | null;
+        };
+        const callsJson = (await callsRes.json()) as {
+          calls?: Array<{
+            notice_number: number;
+            call_amount: number | string;
+            due_date?: string | null;
+            date_of_notice: string;
+            status: string;
+            date_paid?: string | null;
+          }>;
+        };
+        const distJson = (await distRes.json()) as {
+          distributions?: Array<{
+            distribution_date: string;
+            amount: number | string;
+            return_type: string;
+          }>;
+        };
+        const wlJson = (await wlRes.json()) as { rows?: WatchlistFundRow[] };
+
+        const wlRows = wlJson.rows ?? [];
+        const wlEntry = wlRows.find((r) => r.watchlist.fund_id === fund.id);
+        const onWatchlist = Boolean(wlEntry);
+
+        const metrics = perfJson.latest_metrics;
+        const moic = metrics?.moic ?? null;
+        const irr = metrics?.calculated_irr ?? perfJson.reported_irr ?? null;
+
+        setPageContext({
+          pageId: 'fund-detail',
+          pageTitle: `Fund Detail — ${fund.fund_name}`,
+          userRole: role,
+          userId: user.user_id,
+          data: {
+            fund: {
+              name: fund.fund_name,
+              strategy: fundCategoryLabel(fund.fund_category),
+              vintage: fund.commitment_date ? fund.commitment_date.slice(0, 4) : '',
+              committedCapital: Number(fund.dbj_commitment),
+              calledCapital: Number(perfJson.total_called ?? 0),
+              distributions: Number(perfJson.total_distributed ?? 0),
+              nav: perfJson.nav != null ? Number(perfJson.nav) : 0,
+              moic: moic ?? 0,
+              irr: irr ?? 0,
+              status: fund.fund_status,
+              complianceStatus: hydration.summary.compliance_status,
+            },
+            capitalCalls: (callsJson.calls ?? []).map((c) => ({
+              callNumber: c.notice_number,
+              amount: Number(c.call_amount),
+              dueDate: (c.due_date && String(c.due_date)) || c.date_of_notice,
+              status: c.status,
+            })),
+            distributions: (distJson.distributions ?? []).map((d) => ({
+              date: d.distribution_date,
+              amount: Number(d.amount),
+              type: d.return_type,
+            })),
+            overdueObligations: overdueC,
+            nextObligationDue,
+            onWatchlist,
+            watchlistReason: wlEntry?.watchlist?.notes ?? null,
+          },
+          suggestedPrompts: PAGE_SUGGESTED_PROMPTS['fund-detail'],
+        });
+      } catch {
+        if (!cancelled) setPageContext(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      setPageContext(null);
+    };
+  }, [
+    authLoading,
+    fund.commitment_date,
+    fund.dbj_commitment,
+    fund.fund_category,
+    fund.fund_name,
+    fund.fund_status,
+    fund.id,
+    hydration.summary.compliance_status,
+    overdueC,
+    reportingRows,
+    role,
+    setPageContext,
+    user?.user_id,
+  ]);
 
   const loadReporting = useCallback(
     async (page: number) => {
