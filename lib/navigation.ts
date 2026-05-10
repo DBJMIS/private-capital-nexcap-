@@ -98,8 +98,36 @@ export const AUTH_NAV_GROUPS: NavGroupDef[] = [
   },
 ];
 
+/** Fund Manager Portal `/portal/**` segments (longest prefix wins). */
+export const PORTAL_ROUTE_PREFIXES: { prefix: string; label: string }[] = [
+  { prefix: '/portal/questionnaire', label: 'Questionnaire' },
+  { prefix: '/portal/reports', label: 'Reports' },
+  { prefix: '/portal/capital-calls', label: 'Capital Calls' },
+  { prefix: '/portal/documents', label: 'Documents' },
+  { prefix: '/portal/compliance', label: 'Compliance' },
+  { prefix: '/portal/profile', label: 'My Profile' },
+  { prefix: '/portal', label: 'Dashboard' },
+];
+
+export function portalMatch(pathname: string): { prefix: string; label: string } | null {
+  const hit = PORTAL_ROUTE_PREFIXES.find(
+    ({ prefix }) => pathname === prefix || (prefix !== '/' && pathname.startsWith(`${prefix}/`)),
+  );
+  return hit ?? null;
+}
+
+/** Page title within the Fund Manager Portal shell (TopBar `<h1>`). */
+export function portalTitleFromPathname(pathname: string): string {
+  const m = portalMatch(pathname);
+  return m?.label ?? 'Fund Manager Portal';
+}
+
 /** Map pathname prefix → human-readable page title for the top bar */
 export function titleFromPathname(pathname: string): string {
+  if (pathname === '/portal' || pathname.startsWith('/portal/')) {
+    return portalTitleFromPathname(pathname);
+  }
+
   const map: Record<string, string> = {
     '/profile': 'My Profile',
     '/dashboard': 'Dashboard',
@@ -160,6 +188,15 @@ export function navGroupsForRole(role: string | null | undefined): NavGroupDef[]
 }
 
 export function breadcrumbsFromPathname(pathname: string): { label: string; href?: string }[] {
+  if (pathname === '/portal' || pathname.startsWith('/portal/')) {
+    const portalRoot = { label: 'Home', href: '/portal' as const };
+    const m = portalMatch(pathname);
+    if (!m) {
+      return [portalRoot, { label: pathname.replace(/^\/portal\/?/, '') || 'Portal' }];
+    }
+    return [portalRoot, { label: m.label, href: m.prefix }];
+  }
+
   const root = { label: 'Home', href: '/dashboard' as const };
   if (pathname === '/dashboard') {
     return [root, { label: 'Dashboard' }];

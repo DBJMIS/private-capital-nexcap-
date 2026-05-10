@@ -19,6 +19,8 @@ export type SectionNavProps = {
   currentSectionKey?: DdSectionKey;
   /** When set, section changes are client-only (no route navigation). */
   onSelectSection?: (key: DdSectionKey) => void;
+  /** Defaults to `/questionnaires`. Used for Link hrefs when `onSelectSection` is omitted. */
+  basePath?: string;
 };
 
 function statusIcon(status: string) {
@@ -35,7 +37,14 @@ const ACTIVE_NAV =
   'border-l-2 border-navy bg-navy/[0.06] pl-[10px] font-medium text-navy shadow-none';
 const INACTIVE_NAV = 'border-l-2 border-transparent pl-[10px] text-navy/80 hover:bg-navy/[0.04]';
 
-export function SectionNav({ questionnaireId, sections, currentSectionKey, onSelectSection }: SectionNavProps) {
+export function SectionNav({
+  questionnaireId,
+  sections,
+  currentSectionKey,
+  onSelectSection,
+  basePath: basePathProp,
+}: SectionNavProps) {
+  const base = (basePathProp ?? '/questionnaires').replace(/\/$/, '');
   const ordered = [...sections].sort((a, b) => a.section_order - b.section_order);
   const titles = new Map(SECTION_CONFIGS.map((s) => [s.key, s.title]));
 
@@ -66,7 +75,7 @@ export function SectionNav({ questionnaireId, sections, currentSectionKey, onSel
   return (
     <nav className="space-y-1" aria-label="Questionnaire sections">
       {ordered.map((s) => {
-        const href = `/questionnaires/${questionnaireId}/sections/${s.section_key}`;
+        const href = `${base}/${questionnaireId}?section=${encodeURIComponent(s.section_key)}`;
         const active = currentSectionKey === s.section_key;
         return (
           <Link

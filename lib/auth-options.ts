@@ -1,8 +1,10 @@
 import AzureADProvider from 'next-auth/providers/azure-ad';
+import CredentialsProvider from 'next-auth/providers/credentials';
 import type { NextAuthOptions } from 'next-auth';
 import type { User } from 'next-auth';
 import type { JWT } from 'next-auth/jwt';
 import { createClient } from '@supabase/supabase-js';
+import bcrypt from 'bcryptjs';
 
 import type { VCRole } from '@/types/auth';
 import { ALL_MODULE_IDS } from '@/lib/auth/module-access';
@@ -72,6 +74,50 @@ function resolveSignInEmail(params: { user?: User | null; profile?: unknown; tok
 
 export const authOptions: NextAuthOptions = {
   providers: [
+    CredentialsProvider({
+      id: 'credentials',
+      name: 'Credentials',
+      credentials: {
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Password', type: 'password' },
+      },
+      async authorize(creds) {
+        const emailRaw = typeof creds?.email === 'string' ? creds.email.trim().toLowerCase() : '';
+        const password = typeof creds?.password === 'string' ? creds.password : '';
+        if (!emailRaw || !password) return null;
+
+        const supabase = getSupabaseAdmin();
+        const { data: rows, error } = await supabase
+          .from('vc_profiles')
+          .select('id, user_id, full_name, email, role, tenant_id, is_active, is_portal_user, password_hash')
+          .ilike('email', emailRaw)
+          .eq('is_portal_user', true)
+          .eq('is_active', true)
+          .limit(1);
+
+        if (error) {
+          console.error('[auth] portal credentials profile lookup', error.message);
+          return null;
+        }
+
+        const row = (Array.isArray(rows) && rows[0] ? rows[0] : null) as
+          | (ProfileRow & { is_portal_user?: boolean; password_hash?: string | null })
+          | null;
+
+        if (!row?.password_hash) return null;
+        const roleOk = normalizeRole(row.role) === 'fund_manager';
+        if (!roleOk) return null;
+
+        const match = await bcrypt.compare(password, row.password_hash);
+        if (!match) return null;
+
+        return {
+          id: row.user_id,
+          email: row.email,
+          name: row.full_name,
+        } satisfies User;
+      },
+    }),
     AzureADProvider({
       clientId: process.env.AZURE_AD_CLIENT_ID!,
       clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
@@ -108,6 +154,68 @@ export const authOptions: NextAuthOptions = {
       if (typeof account?.access_token === 'string' && account.access_token.length > 0) {
         token.accessToken = account.access_token;
       }
+
+      if (account?.provider === 'credentials' && user?.id) {
+        const supabase = getSupabaseAdmin();
+        const { data: row, error } = await supabase
+          .from('vc_profiles')
+          .select('id, user_id, full_name, email, role, tenant_id, is_active')
+          .eq('user_id', user.id)
+          .eq('is_portal_user', true)
+          .maybeSingle();
+
+        if (error || !row) {
+          console.error('[auth] portal jwt profile', error?.message ?? 'missing row');
+          token.role = null;
+          token.tenant_id = null;
+          token.profile_id = null;
+          token.user_id = user.id;
+          token.full_name = user.name ?? '';
+          token.is_active = false;
+          token.allowedModules = [];
+          return token;
+        }
+
+        const pr = row as ProfileRow;
+        let resolvedRole: VCRole | null = normalizeRole(pr.role);
+        const { data: urRow } = await supabase
+          .from('vc_user_roles')
+          .select('role')
+          .eq('profile_id', pr.id)
+          .eq('tenant_id', pr.tenant_id)
+          .eq('is_active', true)
+          .order('assigned_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const urRole = urRow?.role != null ? normalizeRole(String(urRow.role)) : null;
+        if (urRole) {
+          resolvedRole = urRole;
+        }
+
+        token.role = resolvedRole;
+        token.tenant_id = pr.tenant_id;
+        token.profile_id = pr.id;
+        token.user_id = pr.user_id;
+        token.full_name = pr.full_name || user.name || pr.email;
+        token.email = pr.email;
+        token.name = pr.full_name || user.name || pr.email;
+        token.is_active = !!pr.is_active;
+        token.allowedModules = [];
+
+        if (token.role === 'fund_manager') {
+          const { error: loginUpdateErr } = await supabase
+            .from('fund_manager_contacts')
+            .update({ last_login_at: new Date().toISOString() })
+            .eq('portal_user_id', user.id);
+          if (loginUpdateErr) {
+            console.error('[auth] update contact last_login_at', loginUpdateErr.message);
+          }
+        }
+
+        return token;
+      }
+
       const incomingEmail = resolveSignInEmail({ user, profile, token });
       const incomingName =
         (profile && 'name' in profile && typeof profile.name === 'string' && profile.name) ||

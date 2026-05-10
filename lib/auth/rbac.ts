@@ -68,7 +68,11 @@ export function pathnameAllowedForRole(pathname: string, role: string): boolean 
   const r = canonicalRoleForAccess(role) ?? role;
 
   if (r === 'fund_manager') {
-    return pathname.startsWith('/onboarding') || pathname.startsWith('/application-status');
+    return (
+      pathname.startsWith('/portal') ||
+      pathname.startsWith('/onboarding') ||
+      pathname.startsWith('/application-status')
+    );
   }
 
   const isPortfolioExecutive =

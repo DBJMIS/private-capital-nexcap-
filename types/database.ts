@@ -64,6 +64,8 @@ export type Database = {
           role: string;
           department: string | null;
           is_active: boolean;
+          is_portal_user: boolean;
+          password_hash: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -76,6 +78,8 @@ export type Database = {
           role: string;
           department?: string | null;
           is_active?: boolean;
+          is_portal_user?: boolean;
+          password_hash?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -88,6 +92,8 @@ export type Database = {
           role?: string;
           department?: string | null;
           is_active?: boolean;
+          is_portal_user?: boolean;
+          password_hash?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -105,6 +111,7 @@ export type Database = {
         Row: {
           id: string;
           tenant_id: string;
+          fund_manager_id: string | null;
           fund_name: string;
           manager_name: string;
           country_of_incorporation: string;
@@ -124,6 +131,7 @@ export type Database = {
         Insert: {
           id?: string;
           tenant_id: string;
+          fund_manager_id?: string | null;
           fund_name: string;
           manager_name: string;
           country_of_incorporation: string;
@@ -143,6 +151,7 @@ export type Database = {
         Update: {
           id?: string;
           tenant_id?: string;
+          fund_manager_id?: string | null;
           fund_name?: string;
           manager_name?: string;
           country_of_incorporation?: string;
@@ -171,6 +180,13 @@ export type Database = {
             columns: ['cfp_id'];
             isOneToOne: false;
             referencedRelation: 'vc_cfps';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: string;
+            columns: ['fund_manager_id'];
+            isOneToOne: false;
+            referencedRelation: 'fund_managers';
             referencedColumns: ['id'];
           },
         ];
@@ -1701,6 +1717,82 @@ export type Database = {
         };
         Relationships: [];
       };
+      fund_manager_contacts: {
+        Row: {
+          id: string;
+          tenant_id: string;
+          fund_manager_id: string;
+          full_name: string;
+          email: string;
+          title: string | null;
+          is_primary: boolean;
+          portal_user_id: string | null;
+          portal_access: boolean;
+          invited_at: string | null;
+          invitation_id: string | null;
+          last_login_at: string | null;
+          created_at: string | null;
+          updated_at: string | null;
+          created_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          tenant_id: string;
+          fund_manager_id: string;
+          full_name: string;
+          email: string;
+          title?: string | null;
+          is_primary?: boolean;
+          portal_user_id?: string | null;
+          portal_access?: boolean;
+          invited_at?: string | null;
+          invitation_id?: string | null;
+          last_login_at?: string | null;
+          created_at?: string | null;
+          updated_at?: string | null;
+          created_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          tenant_id?: string;
+          fund_manager_id?: string;
+          full_name?: string;
+          email?: string;
+          title?: string | null;
+          is_primary?: boolean;
+          portal_user_id?: string | null;
+          portal_access?: boolean;
+          invited_at?: string | null;
+          invitation_id?: string | null;
+          last_login_at?: string | null;
+          created_at?: string | null;
+          updated_at?: string | null;
+          created_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: string;
+            columns: ['tenant_id'];
+            isOneToOne: false;
+            referencedRelation: 'vc_tenants';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: string;
+            columns: ['fund_manager_id'];
+            isOneToOne: false;
+            referencedRelation: 'fund_managers';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: string;
+            columns: ['invitation_id'];
+            isOneToOne: false;
+            referencedRelation: 'vc_invitations';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       fund_manager_notes: {
         Row: {
           id: string;
@@ -2008,6 +2100,7 @@ export type Database = {
           status: string;
           invited_by: string | null;
           personal_note: string | null;
+          metadata: Record<string, unknown>;
           created_at: string;
           accepted_at: string | null;
         };
@@ -2022,6 +2115,7 @@ export type Database = {
           status?: string;
           invited_by?: string | null;
           personal_note?: string | null;
+          metadata?: Record<string, unknown>;
           created_at?: string;
           accepted_at?: string | null;
         };
@@ -2036,6 +2130,7 @@ export type Database = {
           status?: string;
           invited_by?: string | null;
           personal_note?: string | null;
+          metadata?: Record<string, unknown>;
           created_at?: string;
           accepted_at?: string | null;
         };
@@ -2127,6 +2222,11 @@ export type AiBenchmarkNarrativeRow = Database['public']['Tables']['ai_benchmark
 
 /** Row shape for `public.fund_managers`. */
 export type FundManagerRow = Database['public']['Tables']['fund_managers']['Row'];
+
+/** Row shape for `public.fund_manager_contacts`. */
+export type FundManagerContactRow = Database['public']['Tables']['fund_manager_contacts']['Row'];
+export type FundManagerContactInsert = Database['public']['Tables']['fund_manager_contacts']['Insert'];
+export type FundManagerContactUpdate = Database['public']['Tables']['fund_manager_contacts']['Update'];
 
 /** Row shape for `public.fund_manager_notes`. */
 export type FundManagerNoteRow = Database['public']['Tables']['fund_manager_notes']['Row'];

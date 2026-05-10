@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
+import { ContactManagementPanel } from '@/components/fund-managers/ContactManagementPanel';
 import { FundManagerAssociateModal } from '@/components/portfolio/FundManagerAssociateModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -434,6 +435,30 @@ export function FundManagerRelationshipCard({ fundId, canWrite }: { fundId: stri
               </div>
             ) : null}
             {noteErr ? <p className="mt-1 text-xs text-red-600">{noteErr}</p> : null}
+          </section>
+
+          <div className="my-4 border-t border-gray-100" />
+          <section className="space-y-3">
+            <div className="flex items-center gap-2 text-xs font-semibold text-gray-700">
+              <svg
+                width={16}
+                height={16}
+                viewBox="0 0 24 24"
+                fill="none"
+                className="shrink-0 text-[#00A99D]"
+                aria-hidden
+              >
+                <path
+                  d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm13-1a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM23 21v-2a5 5 0 0 0-3.8-4.8"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              Portal Contacts
+            </div>
+            <ContactManagementPanel fundManagerId={fundManagerId} firmName={manager.firm_name} portfolioFundId={fundId} readonly={!canWrite} />
           </section>
 
           {canWrite ? (

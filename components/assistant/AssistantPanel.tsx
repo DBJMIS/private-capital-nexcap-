@@ -1,242 +1,392 @@
 'use client';
 
-import {
-  ArrowRight,
-  BookOpen,
-  ChevronDown,
-  Lightbulb,
-  Loader2,
-  Search,
-  SendHorizontal,
-  Sparkles,
-} from 'lucide-react';
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 
 import type { AssistantAnswerMode, AssistantMessage } from '@/lib/assistant/types';
-import { PAGE_SUGGESTED_PROMPTS } from '@/lib/assistant/page-contexts';
 import { useAssistant } from '@/contexts/AssistantContext';
 
-const GENERAL_NAV_LINKS = [
-  {
-    label: 'Portfolio Dashboard',
-    href: '/portfolio',
-    description: 'Overall portfolio metrics & health',
-  },
-  {
-    label: 'Fund Detail',
-    href: '/portfolio/funds',
-    description: 'Individual fund performance',
-  },
-  {
-    label: 'Capital Calls',
-    href: '/portfolio/capital-calls',
-    description: 'Call history & outstanding amounts',
-  },
-  {
-    label: 'Distributions',
-    href: '/portfolio/distributions',
-    description: 'Distribution history & DPI',
-  },
+const NAV_PAGES = [
+  { label: 'Portfolio Dashboard', href: '/portfolio', description: 'Overall portfolio metrics & health' },
+  { label: 'Fund Detail', href: '/portfolio/funds', description: 'Individual fund performance' },
+  { label: 'Capital Calls', href: '/portfolio/capital-calls', description: 'Call history & outstanding amounts' },
+  { label: 'Distributions', href: '/portfolio/distributions', description: 'Distribution history & DPI' },
 ] as const;
 
-function WelcomeNoContext() {
-  return (
-    <div className="flex flex-col items-center justify-center gap-4 px-6 py-4 text-center">
-      <div className="relative h-16 w-16">
-        <span
-          className="absolute inset-0 rounded-full"
-          style={{
-            background:
-              'radial-gradient(circle at 40% 35%, rgba(0,220,200,0.3) 0%, rgba(0,169,157,0.5) 40%, rgba(0,100,120,0.7) 100%)',
-            boxShadow: '0 0 20px rgba(0,169,157,0.3)',
-          }}
-          aria-hidden
-        />
-        <span className="absolute inset-0 z-10 flex items-center justify-center">
-          <Sparkles size={24} className="text-white drop-shadow-sm" strokeWidth={1.5} aria-hidden />
-        </span>
-      </div>
+const GENERAL_CHIPS = [
+  'What is IRR and how is it calculated?',
+  'Explain the difference between DPI and TVPI',
+  'What is a capital call?',
+] as const;
 
-      <div>
-        <h3 className="text-base font-semibold text-white">NexCap Assistant</h3>
-        <p className="mt-1 text-xs text-white/60">AI-powered portfolio intelligence</p>
-      </div>
+const markdownLiBullet: CSSProperties = {
+  width: 5,
+  height: 5,
+  borderRadius: '50%',
+  background: '#00A99D',
+  flexShrink: 0,
+  marginTop: 5,
+};
 
-      <p className="text-sm leading-relaxed text-white/60">
-        I can answer questions about your portfolio data, explain investment concepts, and help you interpret performance
-        metrics.
-      </p>
-
-      <div className="w-full rounded-xl border border-white/10 bg-white/10 p-4 text-left">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/40">Navigate to a page below to get started</p>
-        <div className="space-y-2">
-          {GENERAL_NAV_LINKS.map((page) => (
-            <a
-              key={page.href}
-              href={page.href}
-              className="group flex items-center gap-3 rounded-lg border border-transparent p-2 transition-all duration-150 hover:bg-white/15"
-            >
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10 transition-colors group-hover:bg-white/20">
-                <ArrowRight size={12} className="text-teal-300" aria-hidden />
-              </span>
-              <div className="min-w-0">
-                <p className="text-sm font-medium leading-tight text-white/80 transition-colors group-hover:text-white">
-                  {page.label}
-                </p>
-                <p className="mt-0.5 text-xs leading-tight text-white/50">{page.description}</p>
-              </div>
-            </a>
-          ))}
-        </div>
-      </div>
-
-      <p className="px-2 text-xs italic text-white/60">
-        You can also ask me to explain any investment concept or term from any page.
-      </p>
-
-      <div className="w-full">
-        <p className="mb-2 text-center text-xs text-white/60">Or ask a general question now</p>
-      </div>
-    </div>
-  );
-}
-
-const ASSISTANT_MARKDOWN_COMPONENTS: Partial<Components> = {
-  p: ({ children }) => <p className="mb-2 text-white/90 last:mb-0">{children}</p>,
-  strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
-  ul: ({ children }) => <ul className="mb-2 list-none space-y-1 pl-0 text-white/90">{children}</ul>,
-  ol: ({ children }) => <ol className="mb-2 list-none space-y-1 pl-0 text-white/90">{children}</ol>,
+const markdownComponents: Partial<Components> = {
+  p: ({ children }) => (
+    <p
+      style={{
+        margin: '0 0 10px 0',
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.9)',
+        lineHeight: 1.65,
+      }}
+    >
+      {children}
+    </p>
+  ),
+  strong: ({ children }) => (
+    <strong style={{ fontWeight: 600, color: 'white' }}>{children}</strong>
+  ),
+  ul: ({ children }) => (
+    <ul
+      style={{
+        listStyle: 'none',
+        padding: 0,
+        margin: '8px 0',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 5,
+      }}
+    >
+      {children}
+    </ul>
+  ),
+  ol: ({ children }) => (
+    <ol
+      style={{
+        listStyle: 'none',
+        padding: 0,
+        margin: '8px 0',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 5,
+      }}
+    >
+      {children}
+    </ol>
+  ),
   li: ({ children }) => (
-    <li className="flex gap-2 text-sm text-white/90">
-      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-teal-300" aria-hidden />
-      <span className="min-w-0 break-words">{children}</span>
+    <li style={{ display: 'flex', gap: 7, alignItems: 'flex-start' }}>
+      <span style={markdownLiBullet} aria-hidden />
+      <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', lineHeight: 1.6 }}>{children}</span>
     </li>
   ),
   h1: ({ children }) => (
-    <h1 className="mb-1 mt-2 text-sm font-semibold text-white">{children}</h1>
+    <h1 style={{ fontSize: 13, fontWeight: 600, color: 'white', margin: '8px 0 6px' }}>{children}</h1>
   ),
   h2: ({ children }) => (
-    <h2 className="mb-1 mt-2 text-sm font-semibold text-white">{children}</h2>
+    <h2 style={{ fontSize: 13, fontWeight: 600, color: 'white', margin: '8px 0 6px' }}>{children}</h2>
   ),
   h3: ({ children }) => (
-    <h3 className="mb-1 mt-3 text-xs font-medium uppercase tracking-wider text-white/70">{children}</h3>
+    <h3
+      style={{
+        fontSize: 11,
+        fontWeight: 600,
+        color: 'rgba(255,255,255,0.75)',
+        margin: '10px 0 6px',
+        textTransform: 'uppercase',
+        letterSpacing: '0.04em',
+      }}
+    >
+      {children}
+    </h3>
   ),
-  hr: () => <hr className="my-3 border-white/10" />,
+  hr: () => <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '12px 0' }} />,
   blockquote: ({ children }) => (
-    <blockquote className="my-2 border-l-2 border-teal-400/50 pl-3 italic text-white/70">{children}</blockquote>
+    <blockquote
+      style={{
+        margin: '8px 0',
+        paddingLeft: 12,
+        borderLeft: '3px solid rgba(0,169,157,0.5)',
+        color: 'rgba(255,255,255,0.75)',
+        fontStyle: 'italic',
+        fontSize: 12,
+        lineHeight: 1.6,
+      }}
+    >
+      {children}
+    </blockquote>
   ),
   code: ({ children, className }) => {
     const isBlock = typeof className === 'string' && className.includes('language-');
     if (isBlock) {
       return (
-        <code className="block max-w-full overflow-x-auto font-mono text-xs text-white/90">{children}</code>
+        <code
+          style={{
+            display: 'block',
+            fontFamily: 'ui-monospace, monospace',
+            fontSize: 11,
+            color: 'rgba(255,255,255,0.9)',
+            overflowX: 'auto',
+          }}
+        >
+          {children}
+        </code>
       );
     }
     return (
-      <code className="max-w-full overflow-x-auto rounded bg-white/10 px-1 font-mono text-xs text-white/90">
+      <code
+        style={{
+          fontFamily: 'ui-monospace, monospace',
+          fontSize: 11,
+          color: 'rgba(255,255,255,0.9)',
+          background: 'rgba(255,255,255,0.08)',
+          padding: '1px 4px',
+          borderRadius: 4,
+          overflowX: 'auto',
+        }}
+      >
         {children}
       </code>
     );
   },
   pre: ({ children }) => (
-    <pre className="mb-2 max-w-full overflow-x-auto rounded-lg bg-white/10 p-2 text-xs text-white/80">{children}</pre>
+    <pre
+      style={{
+        margin: '8px 0',
+        padding: 10,
+        borderRadius: 8,
+        background: 'rgba(255,255,255,0.06)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        overflowX: 'auto',
+        maxWidth: '100%',
+        fontSize: 11,
+        color: 'rgba(255,255,255,0.88)',
+      }}
+    >
+      {children}
+    </pre>
+  ),
+  a: ({ children, href }) => (
+    <a
+      href={href ?? '#'}
+      style={{ color: '#5eead4', textDecoration: 'underline' }}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      {children}
+    </a>
   ),
 };
 
-function formatTime(d: Date): string {
-  return d.toLocaleTimeString('en-JM', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Jamaica' });
+function SvgSparkles({ size, stroke }: { size: number; stroke: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={stroke}
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+      <path d="M5 3v4M19 17v4M3 5h4M17 19h4" />
+    </svg>
+  );
 }
 
-function ModeBadge({ mode }: { mode: AssistantAnswerMode }) {
+function SvgClose({ size, stroke }: { size: number; stroke: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={stroke}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
+  );
+}
+
+function SvgSearch10({ stroke }: { stroke: string }) {
+  return (
+    <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={2} aria-hidden>
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
+    </svg>
+  );
+}
+
+function SvgBookOpen10({ stroke }: { stroke: string }) {
+  return (
+    <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={2} aria-hidden>
+      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+    </svg>
+  );
+}
+
+function SvgLightbulb10({ stroke }: { stroke: string }) {
+  return (
+    <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={2} aria-hidden>
+      <path d="M9 18h6" />
+      <path d="M10 22h4" />
+      <path d="M12 2a7 7 0 0 1 7 7c0 2.4-1.2 4.5-3 5.7V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.3A7 7 0 0 1 5 9a7 7 0 0 1 7-7Z" />
+    </svg>
+  );
+}
+
+function SvgArrowPrompt({ stroke }: { stroke: string }) {
+  return (
+    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth={2} aria-hidden>
+      <path d="M5 12h14" />
+      <path d="m12 5 7 7-7 7" />
+    </svg>
+  );
+}
+
+function SvgSend13() {
+  return (
+    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2.5} aria-hidden>
+      <path d="m22 2-7 20-4-9-9-4Z" />
+      <path d="M22 2 11 13" />
+    </svg>
+  );
+}
+
+function ModeBadgeRow({ mode }: { mode: AssistantAnswerMode }) {
   if (mode === 'page_context') return null;
   if (mode === 'live_query') {
     return (
-      <span
-        className="mt-1 inline-flex items-center gap-1 rounded-full border border-teal-700/50 bg-teal-900/50 px-2 py-0.5 text-xs text-teal-300"
-        title="Answer used a live portfolio API"
-      >
-        <Search className="h-3 w-3 shrink-0" aria-hidden />
-        Live data
-      </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+        <SvgSearch10 stroke="#5eead4" />
+        <span style={{ fontSize: 10, color: '#5eead4' }}>Live data</span>
+      </div>
     );
   }
   if (mode === 'knowledge') {
     return (
-      <span
-        className="mt-1 inline-flex items-center gap-1 rounded-full border border-blue-700/50 bg-blue-900/50 px-2 py-0.5 text-xs text-blue-300"
-        title="Answer used general industry knowledge"
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+        <SvgBookOpen10 stroke="#93c5fd" />
+        <span style={{ fontSize: 10, color: '#93c5fd' }}>General knowledge</span>
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+      <SvgLightbulb10 stroke="#fbbf24" />
+      <span style={{ fontSize: 10, color: '#fbbf24' }}>Analysis</span>
+    </div>
+  );
+}
+
+function AssistantMessageBlock({ m }: { m: AssistantMessage }) {
+  const showBadge = Boolean(m.mode && m.mode !== 'page_context');
+  return (
+    <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+      <div
+        style={{
+          background: 'rgba(255,255,255,0.07)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: '14px 14px 14px 3px',
+          padding: '12px 14px',
+          maxWidth: '90%',
+          minWidth: 0,
+          overflow: 'hidden',
+          wordBreak: 'break-word',
+        }}
       >
-        <BookOpen className="h-3 w-3 shrink-0" aria-hidden />
-        General knowledge
-      </span>
-    );
-  }
-  return (
-    <span
-      className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-700/50 bg-amber-900/50 px-2 py-0.5 text-xs text-amber-300"
-      title="Evaluative / benchmark-style analysis"
-    >
-      <Lightbulb className="h-3 w-3 shrink-0" aria-hidden />
-      Analysis
-    </span>
-  );
-}
-
-function MessageBubble({ m, isAssistant }: { m: AssistantMessage; isAssistant: boolean }) {
-  if (isAssistant) {
-    return (
-      <div className="flex min-w-0 max-w-[85%] flex-col items-start gap-1">
-        <div className="relative min-h-[40px] max-w-full break-words overflow-hidden rounded-2xl rounded-tl-sm border border-white/10 bg-white/10 px-4 py-4 text-sm leading-relaxed text-white/90">
-          <Sparkles className="absolute -left-0.5 -top-0.5 h-2.5 w-2.5 text-teal-300" aria-hidden />
-          <div className="assistant-markdown min-w-0 overflow-hidden pl-2">
-            <ReactMarkdown components={ASSISTANT_MARKDOWN_COMPONENTS}>{m.content}</ReactMarkdown>
-          </div>
+        <div className="assistant-md-content" style={{ minWidth: 0, overflow: 'hidden' }}>
+          <ReactMarkdown components={markdownComponents}>{m.content}</ReactMarkdown>
         </div>
-        {m.mode && m.mode !== 'page_context' ? <ModeBadge mode={m.mode} /> : null}
-        <p className="pl-1 text-xs text-white/40">{formatTime(m.timestamp)}</p>
+        {showBadge ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 10 }}>
+            <ModeBadgeRow mode={m.mode!} />
+            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginLeft: 6 }}>
+              {new Date(m.timestamp).toLocaleTimeString('en-JM', {
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: 'America/Jamaica',
+              })}
+            </span>
+          </div>
+        ) : (
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 4 }}>
+            {new Date(m.timestamp).toLocaleTimeString('en-JM', {
+              hour: '2-digit',
+              minute: '2-digit',
+              timeZone: 'America/Jamaica',
+            })}
+          </div>
+        )}
       </div>
-    );
-  }
-  return (
-    <div className="ml-auto flex min-w-0 max-w-[80%] flex-col items-end gap-1">
-      <div className="max-w-full break-words overflow-hidden rounded-2xl rounded-tr-sm bg-[#00A99D] px-3 py-2 text-sm text-white">
-        <p className="whitespace-pre-wrap break-words">{m.content}</p>
-      </div>
-      <p className="pr-1 text-xs text-white/40">{formatTime(m.timestamp)}</p>
     </div>
   );
 }
 
-function LoadingDots() {
+function UserMessageBlock({ m }: { m: AssistantMessage }) {
   return (
-    <div className="flex items-center gap-1 px-1 py-2" aria-live="polite" aria-busy="true">
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="inline-block h-2 w-2 animate-pulse rounded-full bg-white/60"
-          style={{ animationDelay: `${i * 400}ms` }}
-        />
-      ))}
+    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ maxWidth: '82%' }}>
+        <div
+          style={{
+            background: '#00A99D',
+            borderRadius: '14px 14px 3px 14px',
+            padding: '10px 13px',
+            wordBreak: 'break-word',
+          }}
+        >
+          <div style={{ fontSize: 12, color: 'white', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{m.content}</div>
+        </div>
+        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.55)', marginTop: 4, textAlign: 'right' }}>
+          {new Date(m.timestamp).toLocaleTimeString('en-JM', {
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: 'America/Jamaica',
+          })}
+        </div>
+      </div>
     </div>
   );
 }
 
-function LiveFetchBanner() {
+function LoadingBubble() {
   return (
-    <div
-      className="flex max-w-[85%] min-w-0 items-center gap-2 overflow-hidden rounded-2xl rounded-tl-sm border border-teal-700/30 bg-teal-900/30 px-3 py-2 text-sm text-teal-300"
-      aria-live="polite"
-      aria-busy="true"
-    >
-      <Loader2 className="h-4 w-4 shrink-0 animate-spin text-teal-300" aria-hidden />
-      <span className="min-w-0 break-words">Fetching live portfolio data...</span>
+    <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+      <div
+        style={{
+          background: 'rgba(255,255,255,0.07)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: '14px 14px 14px 3px',
+          padding: '12px 14px',
+          maxWidth: '90%',
+        }}
+      >
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '4px 0' }}>
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="assistant-dot-pulse"
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: 'rgba(255,255,255,0.5)',
+                display: 'inline-block',
+                animation: `assistant-dot-pulse 1.2s ease-in-out infinite`,
+                animationDelay: `${i * 150}ms`,
+              }}
+            />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -248,12 +398,17 @@ export function AssistantPanel() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
+  const headerSubtitle = currentContext?.pageTitle ?? 'General';
+  const inputPlaceholder = currentContext ? 'Ask about your portfolio data...' : 'Ask me anything about investing...';
+  const disclaimer = currentContext
+    ? 'Read only · Live portfolio summaries when fetched'
+    : 'Read only · General questions from any page';
+
   const adjustTextarea = useCallback(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    const line = 22;
-    const maxH = line * 3 + 12;
+    const maxH = 120;
     el.style.height = `${Math.min(el.scrollHeight, maxH)}px`;
   }, []);
 
@@ -262,9 +417,18 @@ export function AssistantPanel() {
   }, [input, adjustTextarea]);
 
   useEffect(() => {
-    if (!isOpen) return;
-    const t = requestAnimationFrame(() => textareaRef.current?.focus());
-    return () => cancelAnimationFrame(t);
+    document.body.style.overflow = isOpen ? 'hidden' : '';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen) {
+      const t = window.setTimeout(() => textareaRef.current?.focus(), 320);
+      return () => window.clearTimeout(t);
+    }
+    return undefined;
   }, [isOpen]);
 
   useEffect(() => {
@@ -280,32 +444,6 @@ export function AssistantPanel() {
     return () => document.removeEventListener('keydown', onKey);
   }, [isOpen, toggleOpen]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const root = panelRef.current;
-    if (!root) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab') return;
-      if (!root.contains(document.activeElement)) return;
-      const q = root.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), textarea:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      );
-      const list = [...q].filter((el) => el.offsetParent !== null || el === textareaRef.current);
-      if (list.length === 0) return;
-      const first = list[0]!;
-      const last = list[list.length - 1]!;
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [isOpen]);
-
   const submit = async () => {
     const t = input.trim();
     if (!t || isLoading) return;
@@ -313,120 +451,243 @@ export function AssistantPanel() {
     await sendMessage(t);
   };
 
-  const headerSubtitle = currentContext?.pageTitle ?? 'Not on a portfolio data page';
-  const inputPlaceholder = currentContext ? 'Ask about your portfolio data...' : 'Ask me anything about investing...';
-  const footerNote = currentContext
-    ? 'Read only · Page context; live portfolio summaries when fetched'
-    : 'Read only · General questions from any page';
+  const showSuggested = messages.length === 0 && currentContext !== null;
+  const showWelcome = messages.length === 0 && currentContext === null;
 
   return (
-    <div
-      ref={panelRef}
-      role="dialog"
-      aria-modal="true"
-      aria-label="NexCap Assistant"
-      className={`fixed bottom-20 right-6 z-50 flex w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0B1F45]/95 shadow-2xl backdrop-blur-xl transition duration-200 ease-out sm:w-96 ${
-        isOpen
-          ? 'pointer-events-auto max-h-[70vh] translate-y-0 opacity-100 sm:h-[600px] sm:max-h-none'
-          : 'pointer-events-none max-h-[70vh] translate-y-4 opacity-0 sm:h-[600px] sm:max-h-none'
-      }`}
-    >
-      <header className="shrink-0 rounded-t-2xl border-b border-white/10 bg-[#0B1F45] px-4 py-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <Sparkles className="h-4 w-4 shrink-0 text-teal-300" aria-hidden />
-            <div className="min-w-0">
-              <p className="font-semibold text-white">NexCap Assistant</p>
-              <p className="truncate text-xs text-white/50">{headerSubtitle}</p>
+    <>
+      <style>{`
+        @keyframes assistant-dot-pulse {
+          0%, 100% { opacity: 0.3; transform: scale(0.8); }
+          50% { opacity: 1; transform: scale(1); }
+        }
+        .assistant-md-content p:last-of-type { margin-bottom: 0 !important; }
+      `}</style>
+
+      {isOpen ? (
+        <button
+          type="button"
+          aria-label="Close assistant overlay"
+          className="fixed inset-0 z-40 cursor-pointer border-0 bg-black/[0.3] p-0"
+          onClick={toggleOpen}
+        />
+      ) : null}
+
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="NexCap Assistant"
+        className={`fixed right-0 top-0 z-50 flex h-screen w-[380px] flex-col border-l border-white/[0.08] bg-[#0B1F45] shadow-[-8px_0_32px_rgba(0,0,0,0.3)] transition-transform duration-300 ease-in-out ${
+          isOpen ? 'pointer-events-auto translate-x-0' : 'pointer-events-none translate-x-full'
+        }`}
+      >
+        <header
+          className="flex shrink-0 items-center justify-between border-b border-white/10 bg-[#0B1F45]"
+          style={{ padding: '16px 20px' }}
+        >
+          <div className="flex items-center gap-[10px]">
+            <div
+              className="flex shrink-0 items-center justify-center rounded-full"
+              style={{ width: 32, height: 32, background: 'rgba(0,169,157,0.2)' }}
+            >
+              <SvgSparkles size={14} stroke="#00A99D" />
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'white' }}>NexCap Assistant</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 1 }}>{headerSubtitle}</div>
             </div>
           </div>
           <button
             type="button"
             onClick={toggleOpen}
-            className="rounded-lg p-1 text-white/60 hover:bg-white/10 hover:text-white/90 focus:outline-none focus:ring-2 focus:ring-teal-400"
-            aria-label="Minimize assistant"
+            className="flex cursor-pointer items-center justify-center rounded-full transition-colors"
+            style={{
+              width: 30,
+              height: 30,
+              background: 'rgba(255,255,255,0.08)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.15)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+            }}
+            aria-label="Close NexCap Assistant"
           >
-            <ChevronDown className="h-5 w-5" aria-hidden />
+            <SvgClose size={14} stroke="rgba(255,255,255,0.6)" />
           </button>
-        </div>
-      </header>
+        </header>
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden bg-transparent p-4">
-          {messages.length > 0 ? (
-            messages.map((m) => (
-              <div key={m.id} className={`flex min-w-0 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <MessageBubble m={m} isAssistant={m.role === 'assistant'} />
+        <div
+          className="flex min-h-0 min-w-0 flex-1 flex-col gap-[14px] overflow-y-auto overflow-x-hidden p-4"
+          style={{ padding: 16, gap: 14, scrollBehavior: 'smooth' }}
+        >
+          {messages.length > 0
+            ? messages.map((m) =>
+                m.role === 'assistant' ? (
+                  <AssistantMessageBlock key={m.id} m={m} />
+                ) : (
+                  <UserMessageBlock key={m.id} m={m} />
+                ),
+              )
+            : null}
+
+          {showSuggested ? (
+            <div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: 'rgba(255,255,255,0.35)',
+                  fontWeight: 500,
+                  marginBottom: 8,
+                }}
+              >
+                Suggested questions
               </div>
-            ))
-          ) : currentContext ? (
-            <>
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <Sparkles className="mb-3 h-8 w-8 text-teal-300" aria-hidden />
-                <p className="text-base font-semibold text-white">NexCap Assistant</p>
-                <p className="mt-1 max-w-xs text-sm text-white/60">Ask me anything about your portfolio data</p>
+              <div className="flex flex-col gap-2" style={{ gap: 8 }}>
+                {currentContext!.suggestedPrompts.map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    disabled={isLoading}
+                    onClick={() => void sendMessage(p)}
+                    className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-[10px] border border-white/10 text-left transition-colors disabled:opacity-50"
+                    style={{
+                      background: 'rgba(255,255,255,0.06)',
+                      padding: '10px 14px',
+                      fontSize: 12,
+                      color: 'rgba(255,255,255,0.7)',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.12)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+                    }}
+                  >
+                    <span className="min-w-0 flex-1">{p}</span>
+                    <SvgArrowPrompt stroke="#00A99D" />
+                  </button>
+                ))}
               </div>
-              <div>
-                <p className="mb-2 text-xs text-white/40">Suggested questions</p>
-                <div aria-live="polite" aria-atomic="true" className="sr-only">
-                  Suggested questions loaded
+            </div>
+          ) : null}
+
+          {showWelcome ? (
+            <div
+              className="flex flex-1 flex-col items-center justify-center text-center"
+              style={{ padding: 24, gap: 16 }}
+            >
+              <div
+                className="flex items-center justify-center rounded-full border"
+                style={{
+                  width: 48,
+                  height: 48,
+                  background: 'rgba(0,169,157,0.15)',
+                  borderColor: 'rgba(0,169,157,0.3)',
+                }}
+              >
+                <SvgSparkles size={20} stroke="#00A99D" />
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'white' }}>NexCap Assistant</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: -8 }}>AI-powered portfolio intelligence</div>
+              <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6, margin: 0 }}>
+                I can answer questions about your portfolio, explain investment concepts, and help you interpret performance.
+              </p>
+              <div
+                className="w-full rounded-xl border text-left"
+                style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  borderColor: 'rgba(255,255,255,0.08)',
+                  padding: 14,
+                  borderRadius: 12,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 600,
+                    color: 'rgba(255,255,255,0.3)',
+                    letterSpacing: '0.05em',
+                    textTransform: 'uppercase',
+                    marginBottom: 10,
+                  }}
+                >
+                  Navigate to get started
                 </div>
-                <div className="flex flex-col gap-2">
-                  {currentContext.suggestedPrompts.map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      aria-label={p}
-                      disabled={isLoading}
-                      onClick={() => void sendMessage(p)}
-                      className="rounded-full border border-white/20 bg-white/10 px-3 py-2 text-left text-xs text-white/70 transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-teal-400 disabled:opacity-50"
+                <div className="flex flex-col" style={{ gap: 8 }}>
+                  {NAV_PAGES.map((page) => (
+                    <a
+                      key={page.href}
+                      href={page.href}
+                      className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-[10px] border border-white/10 transition-colors"
+                      style={{
+                        background: 'rgba(255,255,255,0.06)',
+                        padding: '10px 14px',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.12)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+                      }}
                     >
-                      {p}
-                    </button>
+                      <span className="min-w-0 flex-1 text-left">
+                        <span className="block" style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>
+                          {page.label}
+                        </span>
+                        <span className="block" style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
+                          {page.description}
+                        </span>
+                      </span>
+                      <SvgArrowPrompt stroke="#00A99D" />
+                    </a>
                   ))}
                 </div>
               </div>
-            </>
-          ) : (
-            <WelcomeNoContext />
-          )}
-          {isLoading && isFetching ? (
-            <div className="flex min-w-0 justify-start">
-              <LiveFetchBanner />
-            </div>
-          ) : null}
-          {isLoading && !isFetching ? (
-            <div className="flex min-w-0 justify-start">
-              <div className="max-w-[85%] overflow-hidden rounded-2xl rounded-tl-sm border border-white/10 bg-white/10 px-3 py-2">
-                <LoadingDots />
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 12, marginBottom: 8, width: '100%' }}>
+                Or ask a general question
+              </div>
+              <div className="flex w-full flex-col" style={{ gap: 8 }}>
+                {GENERAL_CHIPS.map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    disabled={isLoading}
+                    onClick={() => void sendMessage(p)}
+                    className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-[10px] border border-white/10 text-left transition-colors disabled:opacity-50"
+                    style={{
+                      background: 'rgba(255,255,255,0.06)',
+                      padding: '10px 14px',
+                      fontSize: 12,
+                      color: 'rgba(255,255,255,0.7)',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.12)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+                    }}
+                  >
+                    <span className="min-w-0 flex-1">{p}</span>
+                    <SvgArrowPrompt stroke="#00A99D" />
+                  </button>
+                ))}
               </div>
             </div>
           ) : null}
+
+          {isLoading ? <LoadingBubble /> : null}
+
           <div ref={endRef} />
         </div>
 
-        {!currentContext && messages.length === 0 ? (
-          <div className="shrink-0 border-t border-white/10 px-4 py-3">
-            <p className="mb-2 text-center text-xs text-white/40">Suggested questions</p>
-            <div className="flex flex-col gap-2">
-              {PAGE_SUGGESTED_PROMPTS.general.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  aria-label={p}
-                  disabled={isLoading}
-                  onClick={() => void sendMessage(p)}
-                  className="rounded-full border border-white/20 bg-white/10 px-3 py-2 text-left text-xs text-white/70 transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-teal-400 disabled:opacity-50"
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        <div className="shrink-0 border-t border-white/10 bg-[#0B1F45] p-3">
-          <div className="flex min-w-0 items-end gap-2">
+        <footer
+          className="shrink-0 border-t border-white/10 bg-[#0B1F45]"
+          style={{ padding: '14px 16px 16px' }}
+        >
+          <div className="relative">
             <textarea
               ref={textareaRef}
               rows={1}
@@ -440,22 +701,35 @@ export function AssistantPanel() {
                 }
               }}
               placeholder={inputPlaceholder}
-              className="max-h-[84px] min-h-[40px] min-w-0 flex-1 resize-none rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white outline-none placeholder:text-white/40 focus:ring-2 focus:ring-teal-400 disabled:opacity-50"
+              className="w-full resize-none text-white outline-none focus:border-[rgba(0,169,157,0.5)] disabled:opacity-50"
+              style={{
+                background: 'rgba(255,255,255,0.07)',
+                border: '1px solid rgba(255,255,255,0.14)',
+                borderRadius: 12,
+                padding: '10px 44px 10px 14px',
+                fontSize: 12,
+                minHeight: 44,
+                maxHeight: 120,
+                lineHeight: 1.5,
+              }}
               aria-label="Message to NexCap Assistant"
             />
             <button
               type="button"
               onClick={() => void submit()}
               disabled={isLoading || !input.trim()}
+              className="absolute right-2 top-1/2 flex -translate-y-1/2 cursor-pointer items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-50"
+              style={{ width: 30, height: 30, background: '#00A99D' }}
               aria-label="Send message"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#00A99D] text-white transition hover:brightness-90 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-offset-2 focus:ring-offset-[#0B1F45] disabled:opacity-50"
             >
-              <SendHorizontal className="h-4 w-4" aria-hidden />
+              <SvgSend13 />
             </button>
           </div>
-          <p className="mt-2 text-center text-xs text-white/30">{footerNote}</p>
-        </div>
+          <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', textAlign: 'center', marginTop: 8, marginBottom: 0 }}>
+            {disclaimer}
+          </p>
+        </footer>
       </div>
-    </div>
+    </>
   );
 }

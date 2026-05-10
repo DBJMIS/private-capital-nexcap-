@@ -30,7 +30,14 @@ type Payload = {
 
 const ORDERED_KEYS: DdSectionKey[] = SECTION_CONFIGS.map((s) => s.key);
 
-function QuestionnaireWorkspaceInner({ questionnaireId }: { questionnaireId: string }) {
+function QuestionnaireWorkspaceInner({
+  questionnaireId,
+  basePath: basePathProp,
+}: {
+  questionnaireId: string;
+  basePath?: string;
+}) {
+  const base = (basePathProp ?? '/questionnaires').replace(/\/$/, '');
   const router = useRouter();
   const searchParams = useSearchParams();
   const panelRef = useRef<QuestionnaireSectionPanelHandle>(null);
@@ -105,7 +112,7 @@ function QuestionnaireWorkspaceInner({ questionnaireId }: { questionnaireId: str
       initializedRef.current = true;
       setActiveSection(desired);
       if (!fromUrl) {
-        router.replace(`/questionnaires/${questionnaireId}?section=${desired}`, { scroll: false });
+        router.replace(`${base}/${questionnaireId}?section=${desired}`, { scroll: false });
       }
       return;
     }
@@ -113,16 +120,16 @@ function QuestionnaireWorkspaceInner({ questionnaireId }: { questionnaireId: str
     if (fromUrl && fromUrl !== activeSection) {
       void panelRef.current?.flushSave().then(() => setActiveSection(fromUrl));
     }
-  }, [data, searchParams, activeSection, questionnaireId, router]);
+  }, [base, data, searchParams, activeSection, questionnaireId, router]);
 
   const goToSection = useCallback(
     async (next: DdSectionKey) => {
       if (next === activeSection) return;
       await panelRef.current?.flushSave();
       setActiveSection(next);
-      router.replace(`/questionnaires/${questionnaireId}?section=${next}`, { scroll: false });
+      router.replace(`${base}/${questionnaireId}?section=${next}`, { scroll: false });
     },
-    [activeSection, questionnaireId, router],
+    [activeSection, base, questionnaireId, router],
   );
 
   const idx = useMemo(
@@ -154,6 +161,7 @@ function QuestionnaireWorkspaceInner({ questionnaireId }: { questionnaireId: str
     <QuestionnaireProvider
       value={{
         questionnaireId,
+        basePath: base,
         fundName: data.application?.fund_name ?? null,
         questionnaireStatus: data.questionnaire?.status ?? null,
         sections: data.sections,
@@ -214,14 +222,20 @@ function QuestionnaireWorkspaceInner({ questionnaireId }: { questionnaireId: str
   );
 }
 
-export function QuestionnaireWorkspace({ questionnaireId }: { questionnaireId: string }) {
+export type QuestionnaireWorkspaceProps = {
+  questionnaireId: string;
+  /** Client route prefix for URL sync (default `/questionnaires`). */
+  basePath?: string;
+};
+
+export function QuestionnaireWorkspace({ questionnaireId, basePath }: QuestionnaireWorkspaceProps) {
   return (
     <Suspense
       fallback={
         <div className="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-700">Loading…</div>
       }
     >
-      <QuestionnaireWorkspaceInner questionnaireId={questionnaireId} />
+      <QuestionnaireWorkspaceInner questionnaireId={questionnaireId} basePath={basePath} />
     </Suspense>
   );
 }

@@ -1,5 +1,6 @@
 {
   "name": "dbj-vc-platform",
+  "version": "0.1.0",
   "private": true,
   "scripts": {
     "build": "next build",
@@ -19,12 +20,14 @@
     "@sparticuz/chromium": "^131.0.1",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.10",
+    "bcryptjs": "^3.0.2",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.460.0",
     "mammoth": "^1.12.0",
     "next": "^16.2.4",
     "next-auth": "^4.24.14",
+    "nodemailer": "^7.0.13",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
@@ -34,7 +37,9 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20.14.0",
+    "@types/nodemailer": "^8.0.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.20",

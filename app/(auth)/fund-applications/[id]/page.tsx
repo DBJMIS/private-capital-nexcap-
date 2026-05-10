@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { CfpInfoStrip } from '@/components/cfp/CfpInfoStrip';
 import { AssignCfpWithRefresh } from '@/components/fund-applications/AssignCfpWithRefresh';
 import type { ActiveCfpOption } from '@/components/fund-applications/AssignCfpMenu';
+import { InviteToPortalButton } from '@/components/fund-applications/InviteToPortalButton';
 import { ApplicationPipelineWorkspace } from '@/components/applications/ApplicationPipelineWorkspace';
 import type { PrequalificationRow } from '@/lib/prequalification/types';
 import type { DdQuestionnaireWorkspace } from '@/lib/applications/dd-questionnaire-workspace';
@@ -30,7 +31,7 @@ export default async function FundApplicationDetailPage({ params }: { params: Pr
   const { data: app } = await supabase
     .from('vc_fund_applications')
     .select(
-      'id, fund_name, manager_name, status, submitted_at, created_at, cfp_id, country_of_incorporation, geographic_area, total_capital_commitment_usd, pipeline_metadata',
+      'id, fund_name, manager_name, status, submitted_at, created_at, cfp_id, country_of_incorporation, geographic_area, total_capital_commitment_usd, pipeline_metadata, fund_manager_id',
     )
     .eq('id', applicationId)
     .eq('tenant_id', profile.tenant_id)
@@ -51,6 +52,7 @@ export default async function FundApplicationDetailPage({ params }: { params: Pr
     geographic_area: string;
     total_capital_commitment_usd: number;
     pipeline_metadata: Record<string, unknown> | null;
+    fund_manager_id: string | null;
   };
 
   let cfpStrip: { id: string; title: string; status: string; closing_date: string } | null = null;
@@ -188,6 +190,25 @@ export default async function FundApplicationDetailPage({ params }: { params: Pr
       })()
     : null;
 
+  const INVITE_PORTAL_ROLES = new Set(['investment_officer', 'portfolio_manager', 'admin']);
+
+  let mergedFundManagerId: string | null =
+    typeof row.fund_manager_id === 'string' && row.fund_manager_id.trim().length > 0 ? row.fund_manager_id.trim() : null;
+  if (!mergedFundManagerId) {
+    const { data: pfFmRow } = await supabase
+      .from('vc_portfolio_funds')
+      .select('fund_manager_id')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('application_id', row.id)
+      .maybeSingle();
+    const fmIdRaw = (pfFmRow as { fund_manager_id?: string | null } | null)?.fund_manager_id;
+    if (typeof fmIdRaw === 'string' && fmIdRaw.trim().length > 0) {
+      mergedFundManagerId = fmIdRaw.trim();
+    }
+  }
+
+  const showPortalAccessButton = INVITE_PORTAL_ROLES.has(profile.role) && questionnaire?.id;
+
   const assessment: VcAssessmentSummary | null = assessmentRaw
     ? {
         id: (assessmentRaw as { id: string }).id,
@@ -239,6 +260,18 @@ export default async function FundApplicationDetailPage({ params }: { params: Pr
     portfolioFundId = (pfByApp as { id: string } | null)?.id ?? null;
   }
 
+  let portalFirmDisplayName = row.manager_name.trim() || row.fund_name;
+  if (mergedFundManagerId) {
+    const { data: fmNameRow } = await supabase
+      .from('fund_managers')
+      .select('firm_name')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('id', mergedFundManagerId)
+      .maybeSingle();
+    const fn = (fmNameRow as { firm_name?: string | null } | null)?.firm_name?.trim();
+    if (fn) portalFirmDisplayName = fn;
+  }
+
   const [siteVisitSigned, contractSigned] = await Promise.all([
     siteVisit?.report_file_path
       ? supabase.storage.from('application-documents').createSignedUrl(siteVisit.report_file_path, 3600)
@@ -256,6 +289,14 @@ export default async function FundApplicationDetailPage({ params }: { params: Pr
         <Button asChild variant="outline" size="sm">
           <Link href="/fund-applications">← Fund applications</Link>
         </Button>
+        {showPortalAccessButton ? (
+          <InviteToPortalButton
+            applicationId={row.id}
+            fundManagerId={mergedFundManagerId}
+            firmName={portalFirmDisplayName}
+            associateModalFundId={portfolioFundId}
+          />
+        ) : null}
       </div>
 
       {!cfpStrip ? (

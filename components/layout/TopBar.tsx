@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Bell, ChevronRight, LogOut } from 'lucide-react';
@@ -29,9 +30,21 @@ export type TopBarProps = {
   };
   /** Optional override for the main title (e.g. from a nested server page later) */
   titleOverride?: string | null;
+  /** Passed to next-auth signOut as `callbackUrl` (portal uses `/portal/login`). */
+  signOutRedirectUrl?: string;
+  /** Shown left of breadcrumbs (Fund Manager Portal mobile menu button). Hidden at `lg+`. */
+  leadingSlot?: ReactNode;
+  /** "My Profile" link target (portal uses `/portal/profile`). */
+  profileHref?: string;
 };
 
-export function TopBar({ user, titleOverride }: TopBarProps) {
+export function TopBar({
+  user,
+  titleOverride,
+  signOutRedirectUrl = '/login',
+  leadingSlot,
+  profileHref = '/profile',
+}: TopBarProps) {
   const assistant = useAssistantOptional();
   const pathname = usePathname() ?? '';
   const title = titleOverride?.trim() || titleFromPathname(pathname);
@@ -49,16 +62,19 @@ export function TopBar({ user, titleOverride }: TopBarProps) {
     (pathname.startsWith('/assessments/') && pathname !== '/assessments/new') ||
     pathname === '/questionnaires' ||
     pathname.startsWith('/questionnaires/') ||
-    pathname.startsWith('/settings/users');
+    pathname.startsWith('/settings/users') ||
+    pathname === '/portal' ||
+    pathname.startsWith('/portal/');
 
   async function handleSignOut() {
     assistant?.clearSession();
-    await signOut({ callbackUrl: '/login' });
+    await signOut({ callbackUrl: signOutRedirectUrl });
   }
 
   return (
     <header className="z-30 shrink-0 border-b border-gray-200 bg-white">
       <div className={cn('flex h-14 w-full items-center gap-4 px-6')}>
+        {leadingSlot ? <div className="flex shrink-0 lg:hidden">{leadingSlot}</div> : null}
         <div className="min-w-0 flex-1">
           <nav className="mb-0.5 flex flex-wrap items-center gap-1 text-[12px] text-gray-400" aria-label="Breadcrumb">
             {crumbs.map((c, i) => (
@@ -116,7 +132,7 @@ export function TopBar({ user, titleOverride }: TopBarProps) {
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild className="cursor-pointer">
-                <Link href="/profile">My Profile</Link>
+                <Link href={profileHref}>My Profile</Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-gray-900 focus:text-gray-900">

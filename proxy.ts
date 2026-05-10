@@ -16,6 +16,19 @@ function isInvitePostAuthPath(pathname: string) {
   return /^\/invite\/[^/]+\/post-auth\/?$/.test(pathname);
 }
 
+function isPublicPortalPath(pathname: string) {
+  return (
+    pathname === '/portal/login' ||
+    pathname.startsWith('/portal/login/') ||
+    pathname === '/portal/register' ||
+    pathname.startsWith('/portal/register/') ||
+    pathname === '/portal/forgot-password' ||
+    pathname.startsWith('/portal/forgot-password/') ||
+    pathname === '/portal/reset-password' ||
+    pathname.startsWith('/portal/reset-password/')
+  );
+}
+
 /**
  * Next.js 16+ edge entry (replaces root `middleware.ts`).
  * Auth gate + RBAC + forwarded pathname for `(auth)` layout.
@@ -50,8 +63,17 @@ export async function proxy(req: NextRequest) {
     return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
+  if (isPublicPortalPath(pathname)) {
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
+
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   if (!token?.email) {
+    if (pathname === '/portal' || pathname.startsWith('/portal/')) {
+      const login = new URL('/portal/login', req.url);
+      login.searchParams.set('callbackUrl', pathname + req.nextUrl.search);
+      return NextResponse.redirect(login);
+    }
     const login = new URL('/login', req.url);
     login.searchParams.set('callbackUrl', pathname + req.nextUrl.search);
     return NextResponse.redirect(login);
@@ -93,6 +115,9 @@ export async function proxy(req: NextRequest) {
   }
 
   if (pathname === '/' || pathname === '/dashboard') {
+    if (effective === 'fund_manager') {
+      return NextResponse.redirect(new URL('/portal', req.url));
+    }
     const landing = rootLandingRedirectTarget(effective);
     if (landing && pathname !== landing) {
       return NextResponse.redirect(new URL(landing, req.url));

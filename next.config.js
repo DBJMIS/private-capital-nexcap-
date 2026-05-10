@@ -2,10 +2,10 @@
 const nextConfig = {
   serverExternalPackages: ['puppeteer', 'puppeteer-core', '@sparticuz/chromium'],
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
-  eslint: {
-    ignoreDuringBuilds: true,
+  turbopack: {
+    root: __dirname,
   },
 };
 

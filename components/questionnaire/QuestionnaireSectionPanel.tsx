@@ -63,6 +63,7 @@ export const QuestionnaireSectionPanel = forwardRef<QuestionnaireSectionPanelHan
     const router = useRouter();
     const {
       questionnaireId,
+      basePath,
       questionnaireStatus,
       sections: shellSections,
       actorRole,
@@ -407,9 +408,9 @@ export const QuestionnaireSectionPanel = forwardRef<QuestionnaireSectionPanelHan
           const qStatus = String(meta?.questionnaire?.status ?? '').toLowerCase();
           const qnDone = meta?.all_sections_complete === true || qStatus === 'completed';
           if (qnDone) {
-            router.push(`/questionnaires/${questionnaireId}/complete`);
+            router.push(`${basePath}/${questionnaireId}/complete`);
           } else {
-            router.push('/questionnaires');
+            router.push(`${basePath}/${questionnaireId}`);
           }
           router.refresh();
         } else {

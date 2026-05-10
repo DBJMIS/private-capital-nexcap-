@@ -21,6 +21,8 @@ export type QuestionnaireRefreshSnapshot = {
 
 export type QuestionnaireShellState = {
   questionnaireId: string;
+  /** Route prefix for client navigations (e.g. `/questionnaires` or `/portal/questionnaire`). */
+  basePath: string;
   fundName: string | null;
   /** `vc_dd_questionnaires.status` (e.g. completed → read-only workspace). */
   questionnaireStatus: string | null;

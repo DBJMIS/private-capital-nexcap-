@@ -1,8 +1,22 @@
 /**
- * Send invitation email via Resend HTTP API.
- *
- * File path: lib/email/send-invitation-email.ts
+ * Staff invitation via Office365 SMTP (NexCap / DBJ).
  */
+
+import 'server-only';
+
+import {
+  baseEmailTemplate,
+  bodyText,
+  ctaButton,
+  divider,
+  escapeHtmlForEmail,
+  htmlBlock,
+} from '@/lib/email/base-template';
+import {
+  EMAIL_TRANSPORT_UNAVAILABLE_CLIENT_MESSAGE,
+  isSmtpConfigured,
+  sendEmail,
+} from '@/lib/email/smtp-client';
 
 function appOrigin(): string {
   const o = process.env.NEXT_PUBLIC_APP_URL?.trim() || process.env.VERCEL_URL?.trim();
@@ -20,53 +34,42 @@ export type InvitationEmailParams = {
 };
 
 export async function sendInvitationEmail(params: InvitationEmailParams): Promise<{ id: string } | { error: string }> {
-  const key = process.env.RESEND_API_KEY?.trim();
-  if (!key) {
-    console.warn('[sendInvitationEmail] RESEND_API_KEY not set; skipping email');
-    return { error: 'RESEND_API_KEY not configured' };
+  if (!isSmtpConfigured()) {
+    console.warn('[sendInvitationEmail] SMTP transport not configured');
+    return { error: EMAIL_TRANSPORT_UNAVAILABLE_CLIENT_MESSAGE };
   }
 
-  const from = process.env.RESEND_FROM_EMAIL?.trim() || 'DBJ VC <onboarding@resend.dev>';
-  const noteBlock = params.note?.trim()
-    ? `<p style="margin-top:16px;padding:12px;background:#f9fafb;border-radius:8px;font-size:14px;color:#374151;">${escapeHtml(params.note.trim())}</p>`
-    : '';
+  const previewText = `${params.inviteeName}: invitation to NexCap`;
+  let inner = '';
 
-  const html = `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;line-height:1.5;color:#0B1F45;">
-<p>Hi ${escapeHtml(params.inviteeName)},</p>
-<p><strong>${escapeHtml(params.inviterName)}</strong> has invited you to access the DBJ Private Capital Management Platform as a <strong>${escapeHtml(params.roleLabel)}</strong>.</p>
-<p><a href="${params.acceptUrl}" style="display:inline-block;margin:16px 0;padding:12px 20px;background:#0B1F45;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">Accept Invitation</a></p>
-<p style="font-size:13px;color:#6b7280;">This link expires in 7 days.</p>
-${noteBlock}
-</body></html>`;
+  inner += bodyText(`Hello ${params.inviteeName},`);
+  inner += bodyText(
+    `${params.inviterName} has invited you to join the NexCap platform at the Development Bank of Jamaica as ${params.roleLabel}.`,
+  );
+  inner += ctaButton('Accept Invitation', params.acceptUrl);
+  inner += bodyText('This invitation expires in 7 days.');
+  inner += bodyText('If you did not expect this, ignore this email.');
 
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from,
+  if (params.note?.trim()) {
+    inner += divider();
+    inner += htmlBlock(
+      `<div style="margin-top:0;padding:12px;background:#f9fafb;border-radius:8px;font-size:14px;color:#374151;">${escapeHtmlForEmail(params.note.trim())}</div>`,
+    );
+  }
+
+  const html = baseEmailTemplate(inner, previewText);
+
+  try {
+    await sendEmail({
       to: params.to,
-      subject: "You've been invited to DBJ VC Platform",
+      subject: "You've been invited to NexCap",
       html,
-    }),
-  });
-
-  const json = (await res.json().catch(() => ({}))) as { id?: string; message?: string };
-  if (!res.ok) {
-    console.error('[sendInvitationEmail]', res.status, json);
-    return { error: json.message || `Resend error ${res.status}` };
+    });
+    return { id: 'smtp' };
+  } catch (error) {
+    console.error('[sendInvitationEmail]', error instanceof Error ? error.message : 'send failed');
+    return { error: error instanceof Error ? error.message : 'Failed to send email' };
   }
-  return { id: json.id ?? 'unknown' };
-}
-
-function escapeHtml(s: string) {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 export function invitationAcceptUrl(token: string): string {

@@ -17,6 +17,12 @@ export const metadata: Metadata = {
   description: 'Development Bank of Jamaica — Private Capital & Fund Management',
 };
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+};
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
   return (

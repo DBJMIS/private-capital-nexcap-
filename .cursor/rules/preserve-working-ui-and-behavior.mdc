@@ -1,0 +1,17 @@
+---
+description: Do not alter working portal, auth, questionnaire, or API behavior unless explicitly requested
+alwaysApply: true
+---
+
+# Preserve working UI and functionality
+
+When editing this codebase:
+
+- **Do not change** core UI shells, layouts, navigation, fund selector flows, questionnaires, portal routes, or API behavior that is already confirmed working — unless the user clearly asks for that change.
+- **Prefer minimal diffs**: one focused fix per request; avoid drive-by refactors, visual “cleanup,” or renaming that does not solve the stated task.
+- **If unsure** whether something is intentional product behavior vs. bug, treat it as intentional and ask before changing.
+
+```text
+// ❌ BAD: Restyle PortalShell while fixing an unrelated API typo
+// ✅ GOOD: Touch only the file and lines needed for the requested fix
+```
