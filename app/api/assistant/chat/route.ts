@@ -148,10 +148,6 @@ async function runClassification(
   message: string,
   context: PageContext,
 ): Promise<z.infer<typeof classificationSchema>> {
-  if (context.pageId === 'general') {
-    console.info('[assistant/chat:classify]', { mode: 'knowledge', endpoint_id: null });
-    return { mode: 'knowledge', endpoint_id: null, params: null, reasoning: undefined };
-  }
   const prompt = buildClassificationPrompt(message, context, ASSISTANT_ENDPOINTS);
   const result = await callClaude(
     'You output JSON only. No markdown fences.',
@@ -214,15 +210,7 @@ async function executePhase2AnswerPipeline(args: {
   req: Request;
 }): Promise<Phase2AnswerOk | Phase2AnswerErr> {
   const { message, context, history, sessionCookie, req } = args;
-  const classification: z.infer<typeof classificationSchema> =
-    context.pageId === 'general'
-      ? {
-          mode: 'knowledge',
-          endpoint_id: null,
-          params: null,
-          reasoning: args.classification.reasoning,
-        }
-      : args.classification;
+  const classification = args.classification;
   let effectiveMode: AssistantAnswerMode = classification.mode;
   let endpointUsed: string | null = classification.endpoint_id ?? null;
   const ctxData: Record<string, unknown> = { ...context.data };
