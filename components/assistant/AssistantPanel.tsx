@@ -304,7 +304,32 @@ function AssistantMessageBlock({ m }: { m: AssistantMessage }) {
         }}
       >
         <div className="assistant-md-content" style={{ minWidth: 0, overflow: 'hidden' }}>
-          <ReactMarkdown components={markdownComponents}>{m.content}</ReactMarkdown>
+          {m.streaming ? (
+            <div
+              style={{
+                whiteSpace: 'pre-wrap',
+                fontSize: 12,
+                lineHeight: 1.65,
+                color: 'rgba(255,255,255,0.9)',
+              }}
+            >
+              {m.content}
+              <span
+                aria-hidden
+                style={{
+                  display: 'inline-block',
+                  width: 2,
+                  height: '1em',
+                  backgroundColor: 'rgba(255,255,255,0.45)',
+                  marginLeft: 2,
+                  verticalAlign: 'text-bottom',
+                  animation: 'cursor-blink 0.8s step-end infinite',
+                }}
+              />
+            </div>
+          ) : (
+            <ReactMarkdown components={markdownComponents}>{m.content}</ReactMarkdown>
+          )}
         </div>
         {showBadge ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 10 }}>
@@ -460,6 +485,10 @@ export function AssistantPanel() {
         @keyframes assistant-dot-pulse {
           0%, 100% { opacity: 0.3; transform: scale(0.8); }
           50% { opacity: 1; transform: scale(1); }
+        }
+        @keyframes cursor-blink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0; }
         }
         .assistant-md-content p:last-of-type { margin-bottom: 0 !important; }
       `}</style>

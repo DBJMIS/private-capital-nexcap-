@@ -12,6 +12,7 @@ import {
   UserPlus,
   Users,
 } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 import { ContactManagementPanel } from '@/components/fund-managers/ContactManagementPanel';
@@ -50,8 +51,26 @@ function weakSectionsSummary(sections: string[] | undefined): string {
   return `${w.length} sections`;
 }
 
+function getInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 3)
+    .toUpperCase();
+}
+
 /** Fund manager + AI relationship intelligence — right sidebar on fund detail Overview. */
-export function FundManagerRelationshipCard({ fundId, canWrite }: { fundId: string; canWrite: boolean }) {
+export function FundManagerRelationshipCard({
+  fundId,
+  canWrite,
+  embedded = false,
+}: {
+  fundId: string;
+  canWrite: boolean;
+  embedded?: boolean;
+}) {
   const router = useRouter();
   const {
     linked,
@@ -123,7 +142,10 @@ export function FundManagerRelationshipCard({ fundId, canWrite }: { fundId: stri
   if (!isLoading && linked === null && error) {
     return (
       <>
-        <section className="rounded-xl border border-red-100 bg-red-50/50 p-5">
+        <section
+          className={cn(!embedded && 'rounded-xl border border-red-100 bg-red-50/50 p-5')}
+          style={embedded ? { padding: '10px 0' } : undefined}
+        >
           <p className="text-sm font-medium text-red-800">Could not load relationship data</p>
           <p className="mt-1 text-xs text-red-700">{error}</p>
           <Button type="button" variant="outline" size="sm" className="mt-3 h-8 text-xs" onClick={() => void reload()}>
@@ -138,7 +160,10 @@ export function FundManagerRelationshipCard({ fundId, canWrite }: { fundId: stri
   if (isLoading && linked === null) {
     return (
       <>
-        <section className="rounded-xl border border-gray-200 bg-white p-5">
+        <section
+          className={cn(!embedded && 'rounded-xl border border-gray-200 bg-white p-5')}
+          style={embedded ? { padding: '10px 0' } : undefined}
+        >
           <div className="flex animate-pulse items-center justify-between gap-2">
             <div className="h-4 w-28 rounded bg-gray-200" />
             <div className="h-6 w-20 rounded-full bg-gray-100" />
@@ -159,23 +184,75 @@ export function FundManagerRelationshipCard({ fundId, canWrite }: { fundId: stri
   if (linked === false) {
     return (
       <>
-        <section className="rounded-xl border border-gray-200 bg-white p-5 text-center">
-          <UserPlus className="mx-auto h-8 w-8 text-[#00A99D]" />
-          <p className="mt-2 text-sm font-medium text-gray-900">No fund manager linked</p>
-          <p className="mt-1 text-xs text-gray-500">Associate a fund manager to enable relationship intelligence</p>
-          {canWrite ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="mt-3 h-8 border-[#00A99D] text-xs text-[#00A99D] hover:bg-[#E6F7F6]"
-              onClick={() => setAssociateOpen(true)}
+        {embedded ? (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              padding: '10px 0',
+              gap: 6,
+            }}
+          >
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: '50%',
+                background: '#f3f4f6',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
             >
-              Associate Manager
-            </Button>
-          ) : null}
-          {error ? <p className="mt-2 text-xs text-red-600">{error}</p> : null}
-        </section>
+              <i className="ti ti-user-plus" style={{ fontSize: 16, color: '#9ca3af' }} aria-hidden />
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: '#0b1f45', marginBottom: 2 }}>No manager linked</div>
+              <div style={{ fontSize: 11, color: '#9ca3af', lineHeight: 1.5 }}>
+                Link a fund manager to enable relationship intelligence
+              </div>
+            </div>
+            {canWrite ? (
+              <button
+                type="button"
+                onClick={() => setAssociateOpen(true)}
+                style={{
+                  fontSize: 12,
+                  color: '#1D9E75',
+                  background: 'none',
+                  border: '0.5px solid #1D9E75',
+                  cursor: 'pointer',
+                  padding: '6px 16px',
+                  borderRadius: 8,
+                  marginTop: 4,
+                  fontWeight: 500,
+                }}
+              >
+                Associate manager
+              </button>
+            ) : null}
+            {error ? <p style={{ marginTop: 8, fontSize: 12, color: '#b91c1c' }}>{error}</p> : null}
+          </div>
+        ) : (
+          <section className="rounded-xl border border-gray-200 bg-white p-5 text-center">
+            <UserPlus className="mx-auto h-8 w-8 text-[#00A99D]" />
+            <p className="mt-2 text-sm font-medium text-gray-900">No fund manager linked</p>
+            <p className="mt-1 text-xs text-gray-500">Associate a fund manager to enable relationship intelligence</p>
+            {canWrite ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-3 h-8 border-[#00A99D] text-xs text-[#00A99D] hover:bg-[#E6F7F6]"
+                onClick={() => setAssociateOpen(true)}
+              >
+                Associate Manager
+              </Button>
+            ) : null}
+            {error ? <p className="mt-2 text-xs text-red-600">{error}</p> : null}
+          </section>
+        )}
         {associateModal}
       </>
     );
@@ -187,27 +264,91 @@ export function FundManagerRelationshipCard({ fundId, canWrite }: { fundId: stri
 
   return (
     <div className="w-full">
-      <section className="rounded-xl border border-gray-200 bg-white p-5">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 shrink-0 text-[#00A99D]" />
-            <span className="text-sm font-semibold text-gray-700">Fund Manager</span>
-          </div>
-          <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide', healthBadgeClass(health))}>
-            {health}
-          </span>
-        </div>
+      <section className={cn(!embedded && 'rounded-xl border border-gray-200 bg-white p-5')} style={embedded ? { padding: 0 } : undefined}>
+        {embedded ? (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  background: '#E6F1FB',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: '#185FA5',
+                  flexShrink: 0,
+                }}
+              >
+                {getInitials(manager.name)}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: '#0b1f45',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {manager.name}
+                </div>
+                <div style={{ fontSize: 11, color: '#6b7280' }}>{manager.firm_name}</div>
+              </div>
+              <Link
+                href={`/portfolio/fund-managers/${fundManagerId}`}
+                style={{
+                  fontSize: 11,
+                  color: '#1D9E75',
+                  textDecoration: 'none',
+                  fontWeight: 500,
+                  flexShrink: 0,
+                }}
+              >
+                View →
+              </Link>
+            </div>
+            {manager.email ? (
+              <a
+                href={`mailto:${manager.email}`}
+                style={{ display: 'block', marginTop: 6, fontSize: 11, color: '#9ca3af' }}
+              >
+                {manager.email}
+              </a>
+            ) : null}
+            <p style={{ marginTop: 4, fontSize: 11, color: '#9ca3af' }}>
+              {lastContact ? `Last contact: ${fmtDisplayDate(lastContact)}` : 'No interactions recorded'}
+            </p>
+          </>
+        ) : (
+          <>
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 shrink-0 text-[#00A99D]" />
+                <span className="text-sm font-semibold text-gray-700">Fund Manager</span>
+              </div>
+              <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide', healthBadgeClass(health))}>
+                {health}
+              </span>
+            </div>
 
-        <div className="mt-3 space-y-1">
-          <p className="font-medium text-gray-900">{manager.name}</p>
-          <p className="text-sm text-gray-500">{manager.firm_name}</p>
-          {manager.email ? (
-            <a href={`mailto:${manager.email}`} className="block text-xs text-gray-400 hover:text-[#00A99D]">
-              {manager.email}
-            </a>
-          ) : null}
-          <p className="text-xs text-gray-400">{lastContact ? `Last contact: ${fmtDisplayDate(lastContact)}` : 'No interactions recorded'}</p>
-        </div>
+            <div className="mt-3 space-y-1">
+              <p className="font-medium text-gray-900">{manager.name}</p>
+              <p className="text-sm text-gray-500">{manager.firm_name}</p>
+              {manager.email ? (
+                <a href={`mailto:${manager.email}`} className="block text-xs text-gray-400 hover:text-[#00A99D]">
+                  {manager.email}
+                </a>
+              ) : null}
+              <p className="text-xs text-gray-400">{lastContact ? `Last contact: ${fmtDisplayDate(lastContact)}` : 'No interactions recorded'}</p>
+            </div>
+          </>
+        )}
 
         <div className="my-4 border-t border-gray-100" />
 
@@ -274,7 +415,18 @@ export function FundManagerRelationshipCard({ fundId, canWrite }: { fundId: stri
           expanded ? 'mt-3 max-h-[8000px] opacity-100' : 'max-h-0 opacity-0',
         )}
       >
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
+        <div
+          className={cn(!embedded && 'rounded-xl border border-gray-200 bg-white p-4')}
+          style={
+            embedded
+              ? {
+                  marginTop: 12,
+                  paddingTop: 12,
+                  borderTop: '0.5px solid #e5e7eb',
+                }
+              : undefined
+          }
+        >
           <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-gray-100 pb-2">
             <Sparkles className="h-3 w-3 shrink-0 text-[#00A99D]" aria-hidden />
             <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">AI Generated content</span>

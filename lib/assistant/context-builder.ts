@@ -1,18 +1,26 @@
-import type { AssistantEndpoint } from '@/lib/assistant/endpoints';
+import { ASSISTANT_QUERIES } from '@/lib/assistant/endpoints';
 import type { AssistantAnswerMode, PageContext } from '@/lib/assistant/types';
 
-export function buildClassificationPrompt(
-  message: string,
-  context: PageContext,
-  endpoints: AssistantEndpoint[],
-): string {
-  const endpointLines = endpoints.map((e) => `- id: "${e.id}" | ${e.description}`).join('\n');
+export function buildClassificationPrompt(message: string, context: PageContext): string {
+  const queryLines = ASSISTANT_QUERIES.map((q) => `- ${q.id}: ${q.description.trim()}`).join('\n');
 
   const generalClassificationNote =
     context.pageId === 'general'
-      ? `The user is not on a specific data page.
-If the question is about portfolio data, fund performance, capital calls, compliance, or any specific fund metric — use live_query with the most relevant endpoint.
-Only use knowledge mode for genuinely conceptual or definitional questions (e.g. "what is IRR", "how do capital calls work", "explain DPI").`
+      ? `IMPORTANT — Current page is "General": context.data is usually EMPTY. There is almost nothing to read from the page.
+
+Never use "page_context" for questions that need concrete portfolio records (fund names, lists, statuses, metrics, compliance, capital calls, distributions, watchlist). Those MUST use "live_query" with the matching query_type from the list below.
+
+Examples (general page → live_query):
+- "Show/list/active/all portfolio funds", "what funds do we have" → query_type "portfolio_funds"
+- "Behind on compliance", "overdue compliance", "which funds have compliance issues" → query_type "compliance_summary"
+- Capital calls totals/outstanding → "capital_calls"
+- Distributions/DPI summary → "distributions"
+- Watchlist funds → "watchlist"
+- Performance for a named fund (needs fund id in params) → "fund_performance"
+
+Use "knowledge" ONLY for definitions and how-things-work (e.g. "what is IRR", "explain DPI").
+Use "interpretation" only when the user is clearly judging/evaluating wording already in their message without asking for new portfolio records first.
+Keep JSON compact; reasoning one short phrase.`
       : '';
 
   return `You are classifying a user question for the NexCap VC Platform assistant.
@@ -20,14 +28,14 @@ Only use knowledge mode for genuinely conceptual or definitional questions (e.g.
 Current page: ${context.pageTitle}
 User role: ${context.userRole}
 ${generalClassificationNote}
-Available live query endpoints:
-${endpointLines}
+Available query functions:
+${queryLines}
 
 Classify this question into exactly one mode:
 
 "page_context" — the answer is likely in the current page data and does not need additional data fetching
 
-"live_query" — the answer requires data not available on the current page; pick the most relevant endpoint id
+"live_query" — the answer requires data not available on the current page; pick the most relevant query_type id from the list above
 
 "knowledge" — the question is conceptual, definitional, or asks how something works (e.g. "what is IRR", "how are capital calls calculated")
 
@@ -38,7 +46,7 @@ Question: ${JSON.stringify(message)}
 Respond with valid JSON only. No markdown, no backticks:
 {
   "mode": "page_context" | "live_query" | "knowledge" | "interpretation",
-  "endpoint_id": "[id from list above or null]",
+  "query_type": "[id from list above or null]",
   "params": { "param_key": "param_value" } or null,
   "reasoning": "[one sentence explaining your classification]"
 }`;

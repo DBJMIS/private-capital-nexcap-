@@ -14,3 +14,8 @@ export function createServiceRoleClient() {
   }
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
 }
+
+/** Same client as {@link createServiceRoleClient}; use after auth/tenant checks (e.g. assistant queries). */
+export function createAdminClient() {
+  return createServiceRoleClient();
+}

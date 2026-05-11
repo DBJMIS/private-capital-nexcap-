@@ -57,6 +57,9 @@ export type PortfolioFundRow = {
   impact_objectives?: number[] | null;
   /** PCTU quarterly report fund profile (JSONB). */
   pctu_profile?: Json | null;
+  fund_size_status?: string | null;
+  fund_close_lp_count?: number | null;
+  fund_close_date_actual?: string | null;
 };
 
 export type ReportingObligationInsert = {

@@ -939,6 +939,9 @@ export type Database = {
           sector_focus: string[] | null;
           impact_objectives: number[] | null;
           pctu_profile: Json | null;
+          fund_size_status: string | null;
+          fund_close_lp_count: number | null;
+          fund_close_date_actual: string | null;
         };
         Insert: {
           id?: string;
@@ -986,6 +989,9 @@ export type Database = {
           sector_focus?: string[] | null;
           impact_objectives?: number[] | null;
           pctu_profile?: Json | null;
+          fund_size_status?: string | null;
+          fund_close_lp_count?: number | null;
+          fund_close_date_actual?: string | null;
         };
         Update: {
           id?: string;
@@ -1033,6 +1039,9 @@ export type Database = {
           sector_focus?: string[] | null;
           impact_objectives?: number[] | null;
           pctu_profile?: Json | null;
+          fund_size_status?: string | null;
+          fund_close_lp_count?: number | null;
+          fund_close_date_actual?: string | null;
         };
         Relationships: [];
       };
@@ -1271,6 +1280,54 @@ export type Database = {
           amount?: number;
           currency?: string;
           sort_order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      vc_fund_coinvestors: {
+        Row: {
+          id: string;
+          tenant_id: string;
+          fund_id: string;
+          investor_name: string;
+          investor_type: string | null;
+          investor_country: string | null;
+          commitment_amount: number | null;
+          currency: string;
+          commitment_date: string | null;
+          notes: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          tenant_id: string;
+          fund_id: string;
+          investor_name: string;
+          investor_type?: string | null;
+          investor_country?: string | null;
+          commitment_amount?: number | null;
+          currency?: string;
+          commitment_date?: string | null;
+          notes?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          tenant_id?: string;
+          fund_id?: string;
+          investor_name?: string;
+          investor_type?: string | null;
+          investor_country?: string | null;
+          commitment_amount?: number | null;
+          currency?: string;
+          commitment_date?: string | null;
+          notes?: string | null;
+          created_by?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -2207,6 +2264,9 @@ export type VcCapitalCall = Database['public']['Tables']['vc_capital_calls']['Ro
 
 /** Row shape for `public.vc_capital_call_items` (Epic 5). */
 export type VcCapitalCallItem = Database['public']['Tables']['vc_capital_call_items']['Row'];
+
+/** Row shape for `public.vc_fund_coinvestors`. */
+export type VcFundCoinvestor = Database['public']['Tables']['vc_fund_coinvestors']['Row'];
 
 /** Row shape for `public.vc_distributions` (Epic 6). */
 export type VcDistribution = Database['public']['Tables']['vc_distributions']['Row'];

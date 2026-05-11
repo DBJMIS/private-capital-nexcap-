@@ -11,7 +11,8 @@ import {
   type ReactNode,
 } from 'react';
 
-import type { AssistantAnswerMode, AssistantMessage, PageContext } from '@/lib/assistant/types';
+import type { AssistantAnswerMode, AssistantMessage, PageContext, QueryType } from '@/lib/assistant/types';
+import { isQueryType } from '@/lib/assistant/types';
 import { PAGE_SUGGESTED_PROMPTS } from '@/lib/assistant/page-contexts';
 import { useAuth } from '@/hooks/use-auth';
 
@@ -19,6 +20,12 @@ const MAX_SESSION_MESSAGES = 15;
 
 function isAnswerMode(m: string): m is AssistantAnswerMode {
   return m === 'page_context' || m === 'live_query' || m === 'knowledge' || m === 'interpretation';
+}
+
+function parseQueryUsed(raw: unknown): QueryType | undefined {
+  if (raw === null || raw === undefined) return undefined;
+  if (typeof raw !== 'string') return undefined;
+  return isQueryType(raw) ? raw : undefined;
 }
 
 export type AssistantContextValue = {
@@ -117,18 +124,17 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       };
       setMessages((prev) => [...prev, userMsg]);
       setIsLoading(true);
-      setIsFetching(false);
 
       const historyWire = historySnapshot.map((m) => ({
         ...m,
         timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp,
       }));
 
-      const pushError = () => {
+      const pushError = (content?: string) => {
         const assistantMsg: AssistantMessage = {
           id: crypto.randomUUID(),
           role: 'assistant',
-          content: 'I encountered an error. Please try again.',
+          content: content ?? 'I encountered an error. Please try again.',
           timestamp: new Date(),
           pageId: effectiveContext.pageId,
         };
@@ -137,7 +143,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       };
 
       try {
-        const res1 = await fetch('/api/assistant/chat', {
+        const res = await fetch('/api/assistant/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -146,103 +152,200 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
             context: effectiveContext,
             history: historyWire,
             phase2Enabled: true,
-            phase2Step: 'classify',
+            phase2Step: 'full',
           }),
         });
-        const j1 = (await res1.json().catch(() => ({}))) as {
-          message?: string;
-          mode?: string;
-          endpointId?: string | null;
-          params?: Record<string, string> | null;
-          reasoning?: string | null;
-        };
 
-        if (res1.status === 429) {
+        if (!res.ok) {
+          if (res.status === 429) {
+            const errBody = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+            const rateLimitMsg =
+              typeof errBody.message === 'string'
+                ? errBody.message
+                : 'Session message limit reached. Please start a new session to continue.';
+            pushError(rateLimitMsg);
+            return;
+          }
+          pushError();
+          return;
+        }
+
+        const contentType = res.headers.get('content-type') ?? '';
+        if (!contentType.includes('text/event-stream')) {
+          const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+          const answerText = data.message;
+          const answerId = data.messageId;
+          if (typeof answerText !== 'string' || !answerText.trim() || typeof answerId !== 'string') {
+            pushError();
+            return;
+          }
+
+          const modeRaw = typeof data.mode === 'string' ? data.mode : 'page_context';
+          const answerMode: AssistantAnswerMode = isAnswerMode(modeRaw) ? modeRaw : 'page_context';
+
+          const queryUsed = parseQueryUsed(data.queryUsed);
+
           const assistantMsg: AssistantMessage = {
-            id: crypto.randomUUID(),
+            id: answerId,
             role: 'assistant',
-            content: j1.message ?? 'Session message limit reached. Please start a new session to continue.',
+            content: answerText.trim(),
             timestamp: new Date(),
             pageId: effectiveContext.pageId,
+            mode: answerMode,
+            queryUsed,
+            fetchedLiveData: answerMode === 'live_query',
           };
           setMessages((prev) => [...prev, assistantMsg]);
           if (!isOpenRef.current) setHasUnread(true);
           return;
         }
 
-        if (!res1.ok) {
-          pushError();
+        const reader = res.body?.getReader();
+        if (!reader) {
+          pushError('Stream unavailable. Please try again.');
           return;
         }
 
-        const modeRaw = typeof j1.mode === 'string' ? j1.mode : 'page_context';
-        const mode: AssistantAnswerMode = isAnswerMode(modeRaw) ? modeRaw : 'page_context';
-        if (mode === 'live_query') {
-          setIsFetching(true);
-        }
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let streamingId: string | null = null;
+        let streamingContent = '';
+        const placeholderId = crypto.randomUUID();
 
-        const res2 = await fetch('/api/assistant/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            message: text,
-            context: effectiveContext,
-            history: historyWire,
-            phase2Enabled: true,
-            phase2Step: 'answer',
-            classification: {
-              mode,
-              endpoint_id: j1.endpointId ?? null,
-              params: j1.params ?? null,
-              reasoning: j1.reasoning ?? null,
-            },
-          }),
-        });
-        const j2 = (await res2.json().catch(() => ({}))) as {
-          message?: string;
-          messageId?: string;
-          mode?: string;
-          endpointUsed?: string | null;
-          error?: string;
-        };
-
-        if (res2.status === 429) {
-          const assistantMsg: AssistantMessage = {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content: j2.message ?? 'Session message limit reached. Please start a new session to continue.',
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: placeholderId,
+            role: 'assistant' as const,
+            content: '',
             timestamp: new Date(),
             pageId: effectiveContext.pageId,
-          };
-          setMessages((prev) => [...prev, assistantMsg]);
+            streaming: true,
+          },
+        ]);
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() ?? '';
+
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              const raw = line.slice(6).trim();
+
+              try {
+                const event = JSON.parse(raw) as {
+                  type?: string;
+                  messageId?: string;
+                  mode?: string;
+                  queryUsed?: string | null;
+                  status?: string | null;
+                  text?: string;
+                  message?: string;
+                };
+
+                if (event.type === 'meta') {
+                  setIsLoading(false);
+                  streamingId = typeof event.messageId === 'string' ? event.messageId : null;
+                  const modeRaw = typeof event.mode === 'string' ? event.mode : 'page_context';
+                  const answerMode: AssistantAnswerMode = isAnswerMode(modeRaw) ? modeRaw : 'page_context';
+                  const queryUsed = parseQueryUsed(event.queryUsed);
+                  const statusText = typeof event.status === 'string' ? event.status : '';
+
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === placeholderId
+                        ? {
+                            ...m,
+                            id: streamingId ?? m.id,
+                            mode: answerMode,
+                            queryUsed,
+                            content: statusText,
+                          }
+                        : m,
+                    ),
+                  );
+                  if (!isOpenRef.current) setHasUnread(true);
+                }
+
+                if (event.type === 'delta' && typeof event.text === 'string') {
+                  streamingContent += event.text;
+                  const currentId = streamingId ?? placeholderId;
+                  setMessages((prev) =>
+                    prev.map((m) => (m.id === currentId ? { ...m, content: streamingContent } : m)),
+                  );
+                }
+
+                if (event.type === 'done') {
+                  const currentId = streamingId ?? placeholderId;
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === currentId
+                        ? {
+                            ...m,
+                            streaming: false,
+                            fetchedLiveData: m.mode === 'live_query',
+                          }
+                        : m,
+                    ),
+                  );
+                  if (!isOpenRef.current) setHasUnread(true);
+                }
+
+                if (event.type === 'error') {
+                  const currentId = streamingId ?? placeholderId;
+                  const interruptMsg =
+                    streamingContent.trim().length > 0
+                      ? streamingContent
+                      : typeof event.message === 'string'
+                        ? event.message
+                        : 'Response interrupted. Please try again.';
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === currentId
+                        ? {
+                            ...m,
+                            streaming: false,
+                            content: interruptMsg,
+                            fetchedLiveData: m.mode === 'live_query',
+                          }
+                        : m,
+                    ),
+                  );
+                }
+              } catch {
+                /* skip malformed SSE JSON */
+              }
+            }
+          }
+        } catch {
+          const currentId = streamingId ?? placeholderId;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === currentId
+                ? {
+                    ...m,
+                    streaming: false,
+                    content:
+                      streamingContent.trim().length > 0
+                        ? streamingContent
+                        : 'Response interrupted. Please try again.',
+                    fetchedLiveData: m.mode === 'live_query',
+                  }
+                : m,
+            ),
+          );
           if (!isOpenRef.current) setHasUnread(true);
-          return;
+        } finally {
+          reader.releaseLock();
         }
-
-        if (!res2.ok || typeof j2.message !== 'string' || !j2.message.trim()) {
-          pushError();
-          return;
-        }
-
-        const answerMode: AssistantAnswerMode =
-          typeof j2.mode === 'string' && isAnswerMode(j2.mode) ? j2.mode : mode;
-        const assistantMsg: AssistantMessage = {
-          id: j2.messageId ?? crypto.randomUUID(),
-          role: 'assistant',
-          content: j2.message.trim(),
-          timestamp: new Date(),
-          pageId: effectiveContext.pageId,
-          mode: answerMode,
-          endpointUsed: j2.endpointUsed ?? null,
-          fetchedLiveData: answerMode === 'live_query',
-        };
-        setMessages((prev) => [...prev, assistantMsg]);
-        if (!isOpenRef.current) setHasUnread(true);
       } catch {
         pushError();
       } finally {
-        setIsFetching(false);
         setIsLoading(false);
       }
     },

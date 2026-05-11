@@ -1,10 +1,22 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import { ASSISTANT_ENDPOINTS, resolveEndpointPath } from '@/lib/assistant/endpoints';
 import { buildClassificationPrompt, buildSystemPrompt } from '@/lib/assistant/context-builder';
+import {
+  queryApplicationsPipeline,
+  queryAssessments,
+  queryCapitalCalls,
+  queryComplianceSummary,
+  queryDistributions,
+  queryDivestments,
+  queryFundManagers,
+  queryFundPerformance,
+  queryPortfolioFunds,
+  queryWatchlist,
+} from '@/lib/assistant/queries';
 import { isAssistantPageId } from '@/lib/assistant/page-contexts';
-import type { AssistantAnswerMode, AssistantMessage, PageContext } from '@/lib/assistant/types';
+import type { AssistantAnswerMode, AssistantMessage, PageContext, QueryType } from '@/lib/assistant/types';
+import { isQueryType } from '@/lib/assistant/types';
 import { apiError, logAndReturn } from '@/lib/api/errors';
 import { getProfile } from '@/lib/auth/session';
 
@@ -23,32 +35,59 @@ const pageContextSchema: z.ZodType<PageContext> = z.object({
   suggestedPrompts: z.array(z.string()),
 });
 
-const assistantMessageSchema: z.ZodType<AssistantMessage> = z.object({
+const assistantMessageSchema = z.object({
   id: z.string(),
   role: z.enum(['user', 'assistant']),
   content: z.string(),
   timestamp: z.coerce.date(),
   pageId: z.string(),
   mode: z.enum(['page_context', 'live_query', 'knowledge', 'interpretation']).optional(),
-  endpointUsed: z.string().nullable().optional(),
+  queryUsed: z.string().nullable().optional(),
   fetchedLiveData: z.boolean().optional(),
+  streaming: z.boolean().optional(),
 });
 
 const classificationSchema = z.object({
   mode: z.enum(['page_context', 'live_query', 'knowledge', 'interpretation']),
-  endpoint_id: z.string().nullable().optional(),
+  query_type: z.string().nullable().optional(),
   params: z.record(z.string(), z.string()).nullable().optional(),
   reasoning: z.string().nullable().optional(),
 });
 
-const bodySchema = z.object({
-  message: z.string().trim().min(1).max(499),
-  context: pageContextSchema,
-  history: z.array(assistantMessageSchema),
-  phase2Enabled: z.boolean().optional().default(true),
-  phase2Step: z.enum(['classify', 'answer', 'full']).optional().default('full'),
-  classification: classificationSchema.optional(),
-});
+function normalizeAssistantMessage(
+  m: z.infer<typeof assistantMessageSchema>,
+): AssistantMessage {
+  const q = m.queryUsed;
+  let queryUsed: QueryType | null | undefined;
+  if (q === null) queryUsed = null;
+  else if (q !== undefined && isQueryType(q)) queryUsed = q;
+  else queryUsed = undefined;
+  return {
+    id: m.id,
+    role: m.role,
+    content: m.content,
+    timestamp: m.timestamp,
+    pageId: m.pageId,
+    mode: m.mode,
+    queryUsed,
+    fetchedLiveData: m.fetchedLiveData,
+    streaming: m.streaming,
+  };
+}
+
+const bodySchema = z
+  .object({
+    message: z.string().trim().min(1).max(499),
+    context: pageContextSchema,
+    history: z.array(assistantMessageSchema),
+    phase2Enabled: z.boolean().optional().default(true),
+    phase2Step: z.enum(['classify', 'answer', 'full']).optional().default('full'),
+    classification: classificationSchema.optional(),
+  })
+  .transform((d) => ({
+    ...d,
+    history: d.history.map(normalizeAssistantMessage),
+  }));
 
 function assertContextMatchesSession(context: PageContext, profileUserId: string, profileRole: string): boolean {
   if (context.userId !== profileUserId) return false;
@@ -60,31 +99,44 @@ type AnthropicContent = { type: string; text?: string };
 
 type ClaudeApiRole = 'user' | 'assistant';
 
-function getInternalBaseUrl(req: Request): string {
-  const fromEnv = process.env.NEXTAUTH_URL?.trim() || process.env.VERCEL_URL?.trim();
-  if (fromEnv) {
-    if (fromEnv.startsWith('http://') || fromEnv.startsWith('https://')) return fromEnv.replace(/\/$/, '');
-    return `https://${fromEnv.replace(/\/$/, '')}`;
-  }
-  const host = req.headers.get('host') ?? 'localhost:3000';
-  const proto = req.headers.get('x-forwarded-proto') ?? 'http';
-  return `${proto}://${host}`;
-}
-
-async function fetchEndpointData(path: string, sessionCookie: string, req: Request): Promise<unknown | null> {
+async function executeQuery(
+  queryType: QueryType,
+  params: Record<string, string> | null,
+  tenantId: string,
+): Promise<{ data: unknown; error: string | null }> {
   try {
-    const baseUrl = getInternalBaseUrl(req);
-    const response = await fetch(`${baseUrl}${path}`, {
-      method: 'GET',
-      headers: {
-        Cookie: sessionCookie,
-        Accept: 'application/json',
-      },
-    });
-    if (!response.ok) return null;
-    return (await response.json()) as unknown;
-  } catch {
-    return null;
+    const fundId = params?.fund_id ?? undefined;
+    const status = params?.status ?? undefined;
+
+    switch (queryType) {
+      case 'portfolio_funds':
+        return { data: await queryPortfolioFunds(tenantId), error: null };
+      case 'compliance_summary':
+        return { data: await queryComplianceSummary(tenantId, fundId), error: null };
+      case 'capital_calls':
+        return { data: await queryCapitalCalls(tenantId, fundId, status), error: null };
+      case 'distributions':
+        return { data: await queryDistributions(tenantId, fundId), error: null };
+      case 'fund_performance':
+        return { data: await queryFundPerformance(tenantId, fundId), error: null };
+      case 'watchlist':
+        return { data: await queryWatchlist(tenantId), error: null };
+      case 'assessments':
+        return { data: await queryAssessments(tenantId, status, fundId), error: null };
+      case 'applications_pipeline':
+        return { data: await queryApplicationsPipeline(tenantId, status), error: null };
+      case 'fund_managers':
+        return { data: await queryFundManagers(tenantId), error: null };
+      case 'divestments':
+        return { data: await queryDivestments(tenantId, fundId), error: null };
+      default:
+        return { data: null, error: 'Unknown query type' };
+    }
+  } catch (err) {
+    return {
+      data: null,
+      error: err instanceof Error ? err.message : 'Query failed',
+    };
   }
 }
 
@@ -125,6 +177,52 @@ async function callClaude(
   }
 }
 
+async function streamClaude(
+  system: string,
+  messages: Array<{ role: ClaudeApiRole; content: string }>,
+  maxTokens: number,
+): Promise<ReadableStream<Uint8Array> | null> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'messages-2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: maxTokens,
+        stream: true,
+        system,
+        messages,
+      }),
+    });
+
+    if (!response.ok || !response.body) return null;
+    return response.body;
+  } catch {
+    return null;
+  }
+}
+
+function sseEvent(data: Record<string, unknown>): Uint8Array {
+  return new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+const LEGACY_ENDPOINT_ID_TO_QUERY: Record<string, QueryType> = {
+  portfolio_funds_list: 'portfolio_funds',
+  compliance_overdue: 'compliance_summary',
+  capital_calls_summary: 'capital_calls',
+  distributions_summary: 'distributions',
+  watchlist: 'watchlist',
+  fund_performance: 'fund_performance',
+};
+
 function stripJsonFence(text: string): string {
   const t = text.trim();
   const m = /^```(?:json)?\s*([\s\S]*?)\s*```$/im.exec(t);
@@ -135,32 +233,36 @@ function stripJsonFence(text: string): string {
 function parseClassification(raw: string): z.infer<typeof classificationSchema> {
   const stripped = stripJsonFence(raw);
   try {
-    const obj = JSON.parse(stripped) as unknown;
+    const obj = JSON.parse(stripped) as Record<string, unknown>;
+    if (obj.query_type == null && typeof obj.endpoint_id === 'string') {
+      const mapped = LEGACY_ENDPOINT_ID_TO_QUERY[obj.endpoint_id];
+      if (mapped) obj.query_type = mapped;
+    }
     const r = classificationSchema.safeParse(obj);
     if (r.success) return r.data;
   } catch {
     /* fall through */
   }
-  return { mode: 'page_context', endpoint_id: null, params: null, reasoning: undefined };
+  return { mode: 'page_context', query_type: null, params: null, reasoning: undefined };
 }
 
 async function runClassification(
   message: string,
   context: PageContext,
 ): Promise<z.infer<typeof classificationSchema>> {
-  const prompt = buildClassificationPrompt(message, context, ASSISTANT_ENDPOINTS);
+  const prompt = buildClassificationPrompt(message, context);
   const result = await callClaude(
     'You output JSON only. No markdown fences.',
     [{ role: 'user', content: prompt }],
-    512,
+    220,
   );
   if (!result.ok || !result.text.trim()) {
-    return { mode: 'page_context', endpoint_id: null, params: null, reasoning: undefined };
+    return { mode: 'page_context', query_type: null, params: null, reasoning: undefined };
   }
   const parsed = parseClassification(result.text);
   console.info('[assistant/chat:classify]', {
     mode: parsed.mode,
-    endpoint_id: parsed.endpoint_id ?? null,
+    query_type: parsed.query_type ?? null,
   });
   return parsed;
 }
@@ -196,55 +298,48 @@ type Phase2AnswerOk = {
   message: string;
   messageId: string;
   mode: AssistantAnswerMode;
-  endpointUsed: string | null;
+  queryUsed: QueryType | null;
 };
 
 type Phase2AnswerErr = { ok: false; response: NextResponse };
 
-async function executePhase2AnswerPipeline(args: {
-  message: string;
+type PreparedAnswerPhase = {
+  pageContextForModel: PageContext;
+  effectiveMode: AssistantAnswerMode;
+  queryUsed: QueryType | null;
+  liveStatus: string | null;
+};
+
+async function preparePhase2AnswerContext(args: {
   context: PageContext;
-  history: AssistantMessage[];
   classification: z.infer<typeof classificationSchema>;
-  sessionCookie: string;
-  req: Request;
-}): Promise<Phase2AnswerOk | Phase2AnswerErr> {
-  const { message, context, history, sessionCookie, req } = args;
-  const classification = args.classification;
+  tenantId: string;
+}): Promise<PreparedAnswerPhase> {
+  const { context, classification, tenantId } = args;
   let effectiveMode: AssistantAnswerMode = classification.mode;
-  let endpointUsed: string | null = classification.endpoint_id ?? null;
+  let queryUsed: QueryType | null =
+    classification.query_type && isQueryType(classification.query_type) ? classification.query_type : null;
   const ctxData: Record<string, unknown> = { ...context.data };
+  let liveStatus: string | null = null;
 
   if (effectiveMode === 'live_query') {
-    if (!classification.endpoint_id) {
+    if (!classification.query_type || !isQueryType(classification.query_type)) {
       effectiveMode = 'page_context';
-      endpointUsed = null;
+      queryUsed = null;
       ctxData.live_query_result = null;
       ctxData.live_query_failed = true;
     } else {
-      const ep = ASSISTANT_ENDPOINTS.find((e) => e.id === classification.endpoint_id);
-      if (!ep) {
+      liveStatus = 'Fetching live data...';
+      const { data, error } = await executeQuery(classification.query_type, classification.params ?? null, tenantId);
+      if (error != null) {
         effectiveMode = 'page_context';
-        endpointUsed = null;
+        queryUsed = null;
         ctxData.live_query_result = null;
         ctxData.live_query_failed = true;
       } else {
-        const rawParams = classification.params ?? null;
-        const pathParams =
-          ep.id === 'fund_performance' && rawParams?.fund_id != null && rawParams.id == null
-            ? { ...rawParams, id: rawParams.fund_id }
-            : rawParams;
-        const path = resolveEndpointPath(ep, pathParams);
-        const data = await fetchEndpointData(path, sessionCookie, req);
-        if (data == null) {
-          effectiveMode = 'page_context';
-          endpointUsed = null;
-          ctxData.live_query_result = null;
-          ctxData.live_query_failed = true;
-        } else {
-          ctxData.live_query_result = data;
-          ctxData.live_query_failed = false;
-        }
+        ctxData.live_query_result = data;
+        ctxData.live_query_failed = false;
+        queryUsed = classification.query_type;
       }
     }
   }
@@ -254,7 +349,26 @@ async function executePhase2AnswerPipeline(args: {
     data: ctxData,
   };
 
-  const result = await runAnswerClaude(pageContextForModel, effectiveMode, message, history);
+  return { pageContextForModel, effectiveMode, queryUsed, liveStatus };
+}
+
+async function executePhase2AnswerPipeline(args: {
+  message: string;
+  context: PageContext;
+  history: AssistantMessage[];
+  classification: z.infer<typeof classificationSchema>;
+  tenantId: string;
+}): Promise<Phase2AnswerOk | Phase2AnswerErr> {
+  const { message, context, history, tenantId } = args;
+  const classification = args.classification;
+
+  const prepared = await preparePhase2AnswerContext({
+    context,
+    classification,
+    tenantId,
+  });
+
+  const result = await runAnswerClaude(prepared.pageContextForModel, prepared.effectiveMode, message, history);
   if (!result.ok || !result.text.trim()) {
     return {
       ok: false,
@@ -272,8 +386,8 @@ async function executePhase2AnswerPipeline(args: {
     ok: true,
     message: result.text.trim(),
     messageId: crypto.randomUUID(),
-    mode: effectiveMode,
-    endpointUsed,
+    mode: prepared.effectiveMode,
+    queryUsed: prepared.queryUsed,
   };
 }
 
@@ -284,7 +398,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'UNAUTHORISED', message: 'Not signed in' }, { status: 401 });
     }
 
-    const sessionCookie = req.headers.get('cookie') ?? '';
+    const tenantId = profile.tenant_id;
 
     const bodyRaw = await req.json().catch(() => null);
     const parsed = bodySchema.safeParse(bodyRaw);
@@ -332,7 +446,7 @@ export async function POST(req: Request) {
         message: result.text.trim(),
         messageId: crypto.randomUUID(),
         mode: 'page_context' as const,
-        endpointUsed: null,
+        queryUsed: null,
       });
     }
 
@@ -340,7 +454,7 @@ export async function POST(req: Request) {
       const cls = await runClassification(message, context);
       return NextResponse.json({
         mode: cls.mode,
-        endpointId: cls.endpoint_id ?? null,
+        queryType: cls.query_type ?? null,
         params: cls.params ?? null,
         reasoning: cls.reasoning ?? null,
       });
@@ -356,33 +470,112 @@ export async function POST(req: Request) {
         context,
         history,
         classification: cls,
-        sessionCookie,
-        req,
+        tenantId,
       });
       if (!out.ok) return out.response;
       return NextResponse.json({
         message: out.message,
         messageId: out.messageId,
         mode: out.mode,
-        endpointUsed: out.endpointUsed,
+        queryUsed: out.queryUsed,
       });
     }
 
     const cls = await runClassification(message, context);
-    const merged = await executePhase2AnswerPipeline({
-      message,
+    const prepared = await preparePhase2AnswerContext({
       context,
-      history,
       classification: cls,
-      sessionCookie,
-      req,
+      tenantId,
     });
-    if (!merged.ok) return merged.response;
-    return NextResponse.json({
-      message: merged.message,
-      messageId: merged.messageId,
-      mode: merged.mode,
-      endpointUsed: merged.endpointUsed,
+
+    const messageId = crypto.randomUUID();
+    const systemPrompt = buildSystemPrompt(prepared.pageContextForModel, prepared.effectiveMode);
+    const answerMessages = buildAnswerMessages(message, history);
+
+    const upstreamBody = await streamClaude(systemPrompt, answerMessages, 1000);
+    if (!upstreamBody) {
+      const fallback = await callClaude(systemPrompt, answerMessages, 1000);
+      if (!fallback.ok || !fallback.text.trim()) {
+        return logAndReturn(
+          new Error('Claude answer failed or empty response'),
+          'assistant/chat',
+          'UPSTREAM_ERROR',
+          'Assistant is temporarily unavailable',
+          502,
+        );
+      }
+      return NextResponse.json({
+        message: fallback.text.trim(),
+        messageId,
+        mode: prepared.effectiveMode,
+        queryUsed: prepared.queryUsed,
+      });
+    }
+
+    const readable = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        controller.enqueue(
+          sseEvent({
+            type: 'meta',
+            messageId,
+            mode: prepared.effectiveMode,
+            queryUsed: prepared.queryUsed,
+            status: prepared.liveStatus,
+          }),
+        );
+
+        const reader = upstreamBody.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() ?? '';
+
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              const raw = line.slice(6).trim();
+              if (raw === '[DONE]') continue;
+
+              try {
+                const event = JSON.parse(raw) as {
+                  type?: string;
+                  delta?: { type?: string; text?: string };
+                };
+
+                if (
+                  event.type === 'content_block_delta' &&
+                  event.delta?.type === 'text_delta' &&
+                  typeof event.delta.text === 'string'
+                ) {
+                  controller.enqueue(sseEvent({ type: 'delta', text: event.delta.text }));
+                }
+              } catch {
+                /* skip malformed SSE JSON */
+              }
+            }
+          }
+        } catch {
+          controller.enqueue(sseEvent({ type: 'error', message: 'Stream interrupted' }));
+        } finally {
+          reader.releaseLock();
+          controller.enqueue(sseEvent({ type: 'done' }));
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(readable, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
     });
   } catch (e) {
     return logAndReturn(e, 'assistant/chat', 'INTERNAL_ERROR', 'Something went wrong', 500);

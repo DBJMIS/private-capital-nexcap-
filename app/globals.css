@@ -10,6 +10,14 @@
     --shell-bg: #f3f4f6;
     --shell-card: #ffffff;
     --shell-border: #e5e7eb;
+    --color-background-primary: var(--shell-card);
+    --color-background-secondary: #f9fafb;
+    --color-border-tertiary: var(--shell-border);
+    --border-radius-lg: 12px;
+    --border-radius-md: 8px;
+    --color-text-primary: var(--navy);
+    --color-text-secondary: #6b7280;
+    --color-text-tertiary: #9ca3af;
   }
 
   body {

@@ -1,60 +1,60 @@
-export interface AssistantEndpoint {
-  id: string;
+import type { QueryType } from '@/lib/assistant/types';
+
+export interface QueryDefinition {
+  id: QueryType;
   description: string;
-  path: string;
-  method: 'GET';
-  /** Path template placeholders (e.g. id) and how the classifier should refer to them (e.g. fund_id). */
-  pathParams?: Record<string, string>;
+  params: string[];
 }
 
-export const ASSISTANT_ENDPOINTS: AssistantEndpoint[] = [
+export const ASSISTANT_QUERIES: QueryDefinition[] = [
   {
-    id: 'portfolio_funds_list',
-    description:
-      'Get all portfolio funds with their basic details, commitment amounts, status, and fund manager info',
-    path: '/api/portfolio/funds',
-    method: 'GET',
+    id: 'portfolio_funds',
+    description: `All active portfolio funds — names, commitments, currencies, sectors, fund status, manager names, DBJ stake. Use for: listing funds, showing all funds, fund overview, commitment amounts.`,
+    params: [],
   },
   {
-    id: 'capital_calls_summary',
-    description:
-      'Get summary of all capital calls across the portfolio including total called, outstanding, and overdue amounts',
-    path: '/api/portfolio/capital-calls/summary',
-    method: 'GET',
+    id: 'compliance_summary',
+    description: `Full compliance picture per fund — total obligations, overdue count, accepted count, pending count, compliance rate, max days overdue. Use for: compliance status, which funds are behind, overdue reports, compliance rates, reporting obligations.`,
+    params: ['fund_id'],
   },
   {
-    id: 'distributions_summary',
-    description:
-      'Get summary of all distributions across the portfolio including total distributed, DPI, and distribution history',
-    path: '/api/portfolio/distributions/summary',
-    method: 'GET',
+    id: 'capital_calls',
+    description: `Capital call notices across all funds — notice number, amounts, dates, payment status, remaining commitment. Use for: outstanding calls, paid calls, capital deployment, call history.`,
+    params: ['fund_id', 'status'],
   },
   {
-    id: 'compliance_overdue',
-    description: 'Get all overdue compliance obligations across the portfolio with fund names and days overdue',
-    path: '/api/portfolio/compliance/overdue',
-    method: 'GET',
-  },
-  {
-    id: 'watchlist',
-    description: 'Get all funds currently on the watchlist with reasons and watchlist date',
-    path: '/api/portfolio/watchlist',
-    method: 'GET',
+    id: 'distributions',
+    description: `Distribution payments made to DBJ from portfolio funds — amounts, dates, return type, cumulative totals. Use for: distributions made, returns received, income from funds.`,
+    params: ['fund_id'],
   },
   {
     id: 'fund_performance',
-    description: 'Get performance metrics for a specific fund including IRR, MOIC, DPI, TVPI',
-    path: '/api/portfolio/funds/:id/performance',
-    method: 'GET',
-    pathParams: { id: 'fund_id' },
+    description: `Fund performance metrics — capital called, deployment percentage, NAV, IRR, DPI, TVPI where available. Use for: performance rankings, IRR comparison, deployment rates, NAV, which fund has highest/lowest metric.`,
+    params: ['fund_id'],
+  },
+  {
+    id: 'watchlist',
+    description: `Funds currently on the watchlist — quarters on watchlist, escalation status, latest assessment scores. Use for: watchlist funds, underperforming funds, escalated funds, fund health concerns.`,
+    params: [],
+  },
+  {
+    id: 'assessments',
+    description: `Quarterly fund assessments — scores by dimension, category rating, status, AI summary. Use for: assessment status, fund scores, in-progress assessments, pending approvals, fund health ratings.`,
+    params: ['fund_id', 'status'],
+  },
+  {
+    id: 'applications_pipeline',
+    description: `Fund applications moving through the pipeline — status, submission date, commitment size, CFP link. Use for: pipeline status, applications in review, which CFP applications, application counts by stage.`,
+    params: ['status'],
+  },
+  {
+    id: 'fund_managers',
+    description: `Fund manager firms and contacts — firm names, primary contacts, linked funds, portal access status. Use for: who manages which fund, contact information, manager directory, portal access.`,
+    params: [],
+  },
+  {
+    id: 'divestments',
+    description: `Exit and divestment records — company name, exit type, proceeds, MOIC, full vs partial exit. Use for: exits made, proceeds received, divestment performance, MOIC on exits.`,
+    params: ['fund_id'],
   },
 ];
-
-export function resolveEndpointPath(endpoint: AssistantEndpoint, params: Record<string, string> | null): string {
-  let path = endpoint.path;
-  if (!params) return path;
-  for (const [key, value] of Object.entries(params)) {
-    path = path.replace(`:${key}`, encodeURIComponent(value));
-  }
-  return path;
-}

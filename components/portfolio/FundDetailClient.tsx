@@ -5,7 +5,14 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, Upload } from 'lucide-react';
 
-import { FundManagerRelationshipCard } from '@/components/portfolio/FundManagerRelationshipCard';
+import { ClassificationCard } from '@/components/portfolio/fund-detail/ClassificationCard';
+import { ComplianceScorecardCard, type ComplianceScoresBlock } from '@/components/portfolio/fund-detail/ComplianceScorecardCard';
+import { CapitalStructureCard } from '@/components/portfolio/fund-detail/CapitalStructureCard';
+import { EconomicsCard } from '@/components/portfolio/fund-detail/EconomicsCard';
+import { FundManagerCard } from '@/components/portfolio/fund-detail/FundManagerCard';
+import { ReportingCard } from '@/components/portfolio/fund-detail/ReportingCard';
+import { StrategyCard } from '@/components/portfolio/fund-detail/StrategyCard';
+import { TermsCard } from '@/components/portfolio/fund-detail/TermsCard';
 import { FundAssessmentsTab } from '@/components/portfolio/FundAssessmentsTab';
 import { FundSettingsShell } from '@/components/portfolio/FundSettingsShell';
 import { FundCapitalCallsTab } from '@/components/portfolio/FundCapitalCallsTab';
@@ -18,8 +25,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { FundObligationOverview } from '@/lib/portfolio/fund-obligation-overview';
-import { fundCategoryBadgeClassName, fundCategoryLabel } from '@/lib/portfolio/fund-category';
+import { fundCategoryLabel } from '@/lib/portfolio/fund-category';
 import type { PortfolioFundRow, WatchlistFundRow } from '@/lib/portfolio/types';
+import type { CapitalStructureData } from '@/types/capital-structure';
 import type { Json } from '@/types/database';
 import { PAGE_SUGGESTED_PROMPTS } from '@/lib/assistant/page-contexts';
 import { useAssistant } from '@/contexts/AssistantContext';
@@ -96,24 +104,6 @@ function statusBadge(st: string) {
   return { className: map[s] ?? map.pending!, label: labels[s] ?? s };
 }
 
-function formatMonthYear(isoDate: string) {
-  const d = new Date(`${isoDate}T12:00:00`);
-  return d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-}
-
-function fundTenureSuffix(fund: PortfolioFundRow): string | null {
-  if (fund.is_pvc) return null;
-  const end = fund.fund_end_date;
-  if (!end) return null;
-  const endD = new Date(`${end}T12:00:00`);
-  const now = new Date();
-  now.setHours(12, 0, 0, 0);
-  if (endD < now) return '(Expired)';
-  const years = (endD.getTime() - now.getTime()) / (365.25 * 86400000);
-  const rounded = Math.round(years * 10) / 10;
-  return `(${rounded} years remaining)`;
-}
-
 function daysUntilDue(due: string): { text: string; tone: 'gray' | 'amber' | 'red' } {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -133,6 +123,8 @@ export function FundDetailClient({
   initialReportingRows,
   canWrite,
   canDeleteSnapshots,
+  capitalStructureData,
+  canEditCapitalStructure,
 }: {
   fund: PortfolioFundRow;
   obligationOverview: FundObligationOverview;
@@ -140,6 +132,8 @@ export function FundDetailClient({
   initialReportingRows: Record<string, unknown>[];
   canWrite: boolean;
   canDeleteSnapshots: boolean;
+  capitalStructureData: CapitalStructureData;
+  canEditCapitalStructure: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -185,6 +179,31 @@ export function FundDetailClient({
   const recent = hydration.recent;
   const docs = hydration.documentRows;
   const years = hydration.reportingYears;
+
+  const complianceScoresForOverview = useMemo((): ComplianceScoresBlock | null => {
+    if (reportingRows.length === 0) return null;
+    const byType = (type: string) => {
+      const ofType = reportingRows.filter((o) => o.report_type === type);
+      const total = ofType.length;
+      const accepted = ofType.filter((o) => o.status.toLowerCase() === 'accepted').length;
+      return total > 0 ? Math.round((accepted / total) * 100) : 0;
+    };
+    return {
+      quarterly_financial: byType('quarterly_financial'),
+      quarterly_inv_mgmt: byType('quarterly_investment_mgmt'),
+      audited_annual: byType('audited_annual'),
+      inhouse_quarterly: byType('inhouse_quarterly'),
+    };
+  }, [reportingRows]);
+
+  const overallComplianceOverview = useMemo((): 'compliant' | 'non-compliant' | 'partial' | null => {
+    if (!complianceScoresForOverview) return null;
+    const vals = Object.values(complianceScoresForOverview);
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    if (avg >= 75) return 'compliant';
+    if (avg >= 40) return 'partial';
+    return 'non-compliant';
+  }, [complianceScoresForOverview]);
 
   const { user, role, isLoading: authLoading } = useAuth();
   const { setPageContext } = useAssistant();
@@ -540,13 +559,6 @@ export function FundDetailClient({
     router.replace(`/portfolio/funds/${fund.id}?tab=${k}`, { scroll: false });
   };
 
-  const overall =
-    summary.compliance_status === 'fully_compliant'
-      ? 'Fully compliant'
-      : summary.compliance_status === 'non_compliant'
-        ? 'Non-compliant'
-        : 'Partially compliant';
-
   return (
     <div className="space-y-6">
       <Link
@@ -603,11 +615,33 @@ export function FundDetailClient({
       </div>
 
       {tab === 'overview' ? (
-        <div className="grid gap-6 lg:grid-cols-5">
-          <div className="space-y-4 lg:col-span-3">
-            <section className="rounded-xl border border-gray-200 bg-white p-4">
-              <h2 className="text-sm font-semibold text-[#0B1F45]">Reporting Status</h2>
-              <div className="mt-3 grid grid-cols-2 gap-3">
+        <div className="space-y-4">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 12 }}>
+            <ClassificationCard fund={fund} />
+            <EconomicsCard fund={fund} />
+            <TermsCard fund={fund} />
+            <StrategyCard fund={fund} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 12 }}>
+            <CapitalStructureCard
+              fundId={fund.id}
+              currency={fund.currency}
+              initialData={capitalStructureData}
+              canEdit={canEditCapitalStructure}
+              onFundFieldsUpdated={(patch) => {
+                setFund((f) => ({
+                  ...f,
+                  ...patch,
+                }));
+              }}
+            />
+            <ReportingCard fund={fund} fundId={fund.id} />
+            <ComplianceScorecardCard scores={complianceScoresForOverview} overallStatus={overallComplianceOverview} />
+            <FundManagerCard fundId={fund.id} canWrite={canWrite} />
+          </div>
+          <section className="rounded-xl border border-gray-200 bg-white p-4">
+            <h2 className="text-sm font-semibold text-[#0B1F45]">Reporting Status</h2>
+            <div className="mt-3 grid grid-cols-2 gap-3">
                 {[
                   { label: 'Due soon (≤14d)', value: dueSoon, tone: 'amber' as const },
                   { label: 'Overdue', value: overdueC, tone: 'red' as const },
@@ -678,231 +712,6 @@ export function FundDetailClient({
                 View All Reporting →
               </Link>
             </section>
-          </div>
-          <div className="space-y-4 lg:col-span-2">
-            <section className="rounded-xl border border-gray-200 bg-white p-5">
-              <h2 className="text-sm font-semibold text-[#0B1F45]">Fund details</h2>
-
-              <div className="mt-4 space-y-6">
-                <div>
-                  <h3 className="border-b border-gray-100 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-400">
-                    Classification & horizon
-                  </h3>
-                  <div className="mt-3 space-y-4">
-                    <div>
-                      <p className="text-xs font-medium text-gray-500">Category</p>
-                      <div className="mt-1.5">
-                        <span className={fundCategoryBadgeClassName(fund.fund_category)}>{fundCategoryLabel(fund.fund_category)}</span>
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500">Fund tenure</p>
-                      <p className="mt-0.5 text-sm text-[#0B1F45]">
-                        {fund.is_pvc ? (
-                          <span className="text-teal-600">Permanent Capital Vehicle (PCV)</span>
-                        ) : fund.fund_end_date ? (
-                          <>
-                            {formatMonthYear(fund.fund_end_date)}{' '}
-                            <span className="text-gray-500">{fundTenureSuffix(fund) ?? ''}</span>
-                          </>
-                        ) : (
-                          '—'
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="border-b border-gray-100 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-400">
-                    Economics & fees
-                  </h3>
-                  <div className="mt-3 grid gap-x-6 gap-y-4 sm:grid-cols-2">
-                    <div>
-                      <p className="text-xs font-medium text-gray-500">Target IRR</p>
-                      <p className="mt-0.5 text-sm text-[#0B1F45]">
-                        {fund.target_irr_pct != null ? `${Number(fund.target_irr_pct).toFixed(1)}%` : '—'}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500">Management fee</p>
-                      <p className="mt-0.5 text-sm text-[#0B1F45]">
-                        {fund.management_fee_pct != null ? `${Number(fund.management_fee_pct).toFixed(2)}%` : '—'}
-                      </p>
-                    </div>
-                    <div className="sm:col-span-2">
-                      <p className="text-xs font-medium text-gray-500">Performance fee</p>
-                      <p className="mt-0.5 text-sm text-[#0B1F45]">
-                        {fund.performance_fee_pct != null ? `${Number(fund.performance_fee_pct)}%` : '—'}
-                        {fund.performance_fee_pct != null && fund.hurdle_rate_pct != null
-                          ? ` above ${Number(fund.hurdle_rate_pct)}% hurdle`
-                          : ''}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="border-b border-gray-100 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-400">
-                    Strategy
-                  </h3>
-                  <div className="mt-3 space-y-4">
-                    <div>
-                      <p className="text-xs font-medium text-gray-500">Sector focus</p>
-                      <div className="mt-1.5 flex flex-wrap gap-1">
-                        {(fund.sector_focus ?? []).length === 0 ? (
-                          <span className="text-sm text-gray-400">—</span>
-                        ) : (
-                          (fund.sector_focus ?? []).map((s) => (
-                            <span key={s} className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
-                              {s}
-                            </span>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500">Impact objectives</p>
-                      <div className="mt-1.5 flex flex-wrap gap-1">
-                        {(fund.impact_objectives ?? []).length === 0 ? (
-                          <span className="text-sm text-gray-400">—</span>
-                        ) : (
-                          [...new Set(fund.impact_objectives ?? [])]
-                            .sort((a, b) => a - b)
-                            .map((id) => {
-                              if (id === 1) {
-                                return (
-                                  <span
-                                    key={id}
-                                    className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700"
-                                  >
-                                    Ecosystem Development
-                                  </span>
-                                );
-                              }
-                              if (id === 2) {
-                                return (
-                                  <span
-                                    key={id}
-                                    className="rounded-full bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700"
-                                  >
-                                    Access to Finance
-                                  </span>
-                                );
-                              }
-                              if (id === 3) {
-                                return (
-                                  <span
-                                    key={id}
-                                    className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800"
-                                  >
-                                    Investment Returns
-                                  </span>
-                                );
-                              }
-                              return null;
-                            })
-                            .filter((el): el is JSX.Element => el != null)
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="border-b border-gray-100 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-400">
-                    Terms & currency
-                  </h3>
-                  <div className="mt-3 grid gap-x-6 gap-y-4 sm:grid-cols-2">
-                    <div>
-                      <p className="text-xs font-medium text-gray-500">Currency</p>
-                      <p className="mt-0.5 text-sm text-[#0B1F45]">{fund.currency}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500">Listed</p>
-                      <p className="mt-0.5 text-sm text-[#0B1F45]">{fund.listed ? 'Yes' : 'No'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500">Commitment date</p>
-                      <p className="mt-0.5 text-sm text-[#0B1F45]">{fund.commitment_date}</p>
-                    </div>
-                    {fund.currency === 'JMD' ? (
-                      <div>
-                        <p className="text-xs font-medium text-gray-500">Exchange rate</p>
-                        <p className="mt-0.5 text-sm text-[#0B1F45]">{Number(fund.exchange_rate_jmd_usd ?? 157)}</p>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="border-b border-gray-100 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-400">
-                    Reporting
-                  </h3>
-                  <div className="mt-3 space-y-4">
-                    <div>
-                      <p className="text-xs font-medium text-gray-500">Quarterly reports due</p>
-                      <p className="mt-0.5 text-sm text-[#0B1F45]">{fund.quarterly_report_due_days} days after quarter end</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500">Audit due</p>
-                      <p className="mt-0.5 text-sm text-[#0B1F45]">{fund.audit_report_due_days} days after year end</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-500">Report types</p>
-                      <div className="mt-1.5 flex flex-wrap gap-1">
-                        {fund.requires_quarterly_financial ? (
-                          <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700">Quarterly Financial</span>
-                        ) : null}
-                        {fund.requires_quarterly_inv_mgmt ? (
-                          <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700">Inv. Mgmt</span>
-                        ) : null}
-                        {fund.requires_audited_annual ? (
-                          <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700">Audited Annual</span>
-                        ) : null}
-                        {fund.requires_inhouse_quarterly ? (
-                          <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-700">In-house</span>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <button type="button" className="mt-5 text-sm font-medium text-[#0F8A6E] hover:underline" onClick={() => setTabNav('settings')}>
-                Edit Settings →
-              </button>
-            </section>
-            <section className="rounded-xl border border-gray-200 bg-white p-4">
-              <h2 className="text-sm font-semibold text-[#0B1F45]">Compliance scorecard</h2>
-              <div className="mt-3 space-y-3">
-                {(
-                  [
-                    ['quarterly_financial', 'Quarterly Financial'],
-                    ['quarterly_investment_mgmt', 'Quarterly Inv. Mgmt'],
-                    ['audited_annual', 'Audited Annual'],
-                    ['inhouse_quarterly', 'In-house Quarterly'],
-                  ] as const
-                ).map(([k, lab]) => {
-                  const pct = hydration.compliancePctByType[k];
-                  return (
-                    <div key={k}>
-                      <div className="flex justify-between text-xs text-gray-600">
-                        <span>{lab}</span>
-                        <span>{pct}%</span>
-                      </div>
-                      <div className="mt-1 h-2 overflow-hidden rounded-full bg-gray-100">
-                        <div className="h-full bg-[#0F8A6E]" style={{ width: `${pct}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="mt-4 text-xs font-semibold uppercase text-gray-400">Overall</p>
-              <span className="mt-1 inline-block whitespace-nowrap rounded-full bg-[#EEF3FB] px-3 py-1 text-sm font-medium text-[#0B1F45]">{overall}</span>
-            </section>
-            <FundManagerRelationshipCard fundId={fund.id} canWrite={canWrite} />
-          </div>
         </div>
       ) : null}
 
